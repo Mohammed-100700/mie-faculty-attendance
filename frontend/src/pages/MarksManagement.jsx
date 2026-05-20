@@ -123,8 +123,15 @@ const MarksManagement = () => {
     );
   }
 
-  const totalCols = sheet.columns.length;
-  const approvedCols = sheet.columns.filter((c) => c.approved).length;
+  // Compute totals from all sheets
+  var allColumns = [];
+  if (sheet.sheets) {
+    sheet.sheets.forEach((s) => {
+      if (s.columns) allColumns = allColumns.concat(s.columns);
+    });
+  }
+  const totalCols = allColumns.length;
+  const approvedCols = allColumns.filter((c) => c.approved).length;
   const progress = totalCols > 0 ? (approvedCols / totalCols) * 100 : 0;
 
   return (
@@ -198,7 +205,7 @@ const MarksManagement = () => {
         </div>
         <div className="card text-center">
           <p className="text-sm text-gray-500">Status</p>
-          {sheet.allApproved ? (
+          {totalCols > 0 && approvedCols === totalCols ? (
             <div className="flex items-center justify-center gap-1 text-green-600">
               <FiCheckCircle className="w-5 h-5" />
               <span className="text-lg font-bold">All Done!</span>
@@ -216,7 +223,7 @@ const MarksManagement = () => {
             <span className="text-sm text-gray-500">{approvedCols}/{totalCols}</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3">
-            <div className={'h-3 rounded-full transition-all ' + (sheet.allApproved ? 'bg-green-500' : 'bg-primary-500')} style={{ width: progress + '%' }} />
+            <div className={'h-3 rounded-full transition-all ' + (totalCols > 0 && approvedCols === totalCols ? 'bg-green-500' : 'bg-primary-500')} style={{ width: progress + '%' }} />
           </div>
         </div>
       )}
