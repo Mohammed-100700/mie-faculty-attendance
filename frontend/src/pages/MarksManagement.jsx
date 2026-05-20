@@ -166,9 +166,11 @@ const MarksManagement = () => {
               <li>Open your Google Sheet</li>
               <li>Go to <strong>Extensions &gt; Apps Script</strong></li>
               <li>Delete any existing code and paste the script above</li>
-              <li>Edit the <code className="bg-gray-100 px-1 rounded">setup()</code> function values</li>
-              <li>Save and run <code className="bg-gray-100 px-1 rounded">setup()</code> once</li>
-              <li>Return to your sheet - checkboxes will appear in row 2</li>
+              <li>Edit the <code className="bg-gray-100 px-1 rounded">setup()</code> function values (webhook URL, staff email, your name)</li>
+              <li>Save the project (Ctrl+S)</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">setup()</code> once (authorize when prompted)</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">createTrigger</code> once to enable email sending</li>
+              <li>Return to your sheet - checkboxes in row 2 will now sync and send emails</li>
             </ol>
           </div>
         </div>
