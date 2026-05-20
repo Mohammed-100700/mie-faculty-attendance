@@ -4,6 +4,8 @@ import { getMySheet, connectSheet, resetColumn, disconnectSheet } from '../api/m
 import { useAuth } from '../context/AuthContext';
 import { getAppsScriptCode } from '../utils/appsScriptCode';
 
+const WEBHOOK_BASE = window.location.origin;
+
 const MarksManagement = () => {
   const { user } = useAuth();
   const [sheet, setSheet] = useState(null);
@@ -12,6 +14,9 @@ const MarksManagement = () => {
   const [copied, setCopied] = useState(false);
   const [connectForm, setConnectForm] = useState({ sheetUrl: '', staffEmail: '' });
   const [connectLoading, setConnectLoading] = useState(false);
+
+  const webhookUrl = WEBHOOK_BASE + '/api/marks-sheets/webhook';
+  const scriptCode = getAppsScriptCode(webhookUrl, sheet?.staffEmail || '', user?.name || '');
 
   const fetchSheet = useCallback(async () => {
     try {
@@ -58,7 +63,7 @@ const MarksManagement = () => {
   };
 
   const copyScript = () => {
-    navigator.clipboard.writeText(getAppsScriptCode());
+    navigator.clipboard.writeText(scriptCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -149,16 +154,21 @@ const MarksManagement = () => {
               {copied ? <><FiCheckCircle className="w-4 h-4" /> Copied!</> : <><FiCopy className="w-4 h-4" /> Copy Code</>}
             </button>
           </div>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 text-sm text-yellow-800">
-            <p className="font-semibold">(!) Important: Edit these values in the script before saving:</p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3 text-sm text-green-800">
+            <p className="font-semibold">Script is pre-configured with your values:</p>
             <ul className="list-disc list-inside mt-1 space-y-1">
-              <li><code className="bg-yellow-100 px-1 rounded">WEBHOOK_URL</code> - Your API webhook URL</li>
-              <li><code className="bg-yellow-100 px-1 rounded">STAFF_EMAIL</code> - {sheet.staffEmail}</li>
-              <li><code className="bg-yellow-100 px-1 rounded">LECTURER_NAME</code> - {user?.name}</li>
+              <li><code className="bg-green-100 px-1 rounded">WEBHOOK_URL</code> = {webhookUrl}</li>
+              <li><code className="bg-green-100 px-1 rounded">STAFF_EMAIL</code> = {sheet.staffEmail}</li>
+              <li><code className="bg-green-100 px-1 rounded">LECTURER_NAME</code> = {user?.name}</li>
             </ul>
+            {webhookUrl.includes('localhost') && (
+              <p className="mt-2 text-yellow-700 bg-yellow-50 p-2 rounded">
+                <strong>Note:</strong> You are running locally. The webhook URL uses localhost which Google Sheets cannot reach. Deploy your backend to a public server (e.g., Render, Railway) and update the WEBHOOK_URL in the script.
+              </p>
+            )}
           </div>
           <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto max-h-64 overflow-y-auto">
-            {getAppsScriptCode()}
+            {scriptCode}
           </pre>
           <div className="mt-3 text-sm text-gray-500">
             <p><strong>How to install:</strong></p>
@@ -166,10 +176,10 @@ const MarksManagement = () => {
               <li>Open your Google Sheet</li>
               <li>Go to <strong>Extensions &gt; Apps Script</strong></li>
               <li>Delete any existing code and paste the script above</li>
-              <li>Edit the <code className="bg-gray-100 px-1 rounded">setup()</code> function values (webhook URL, staff email, your name)</li>
               <li>Save the project (Ctrl+S)</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">setup()</code> once (authorize when prompted)</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">createTrigger</code> once to enable email sending</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">createCheckboxes()</code> - this adds checkboxes to row 2</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">createTrigger()</code> - this enables email sending</li>
+              <li>Authorize the script when prompted (click through the warnings)</li>
               <li>Return to your sheet - checkboxes in row 2 will now sync and send emails</li>
             </ol>
           </div>
