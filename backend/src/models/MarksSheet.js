@@ -23,6 +23,8 @@ const marksSheetSchema = new mongoose.Schema(
     columns: [
       {
         name: String,
+        branch: String,
+        subject: String,
         colIndex: Number,
         approved: { type: Boolean, default: false },
         approvedAt: { type: Date, default: null },

@@ -95,13 +95,15 @@ const MarksManagement = () => {
             Connect Google Sheet
           </h3>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-sm text-blue-800">
-            <p className="font-semibold mb-2">Before you start:</p>
+            <p className="font-semibold mb-2">Sheet structure:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Create a new Google Sheet</li>
-              <li>Column A (row 3+): Student names</li>
-              <li>Row 1 (columns B+): Test/Exam names (e.g., Quiz 1, Midterm)</li>
-              <li>Row 2: Leave empty (checkboxes will be added by the script)</li>
-              <li>Fill in marks for each student under each test column</li>
+              <li>Row 1: Branch names (Dhanmondi, Uttara)</li>
+              <li>Row 2: Subject names (Mathematics, Physics)</li>
+              <li>Row 3: Test names (Quiz 1, Midterm, Final)</li>
+              <li>Row 4: Checkboxes (added by script)</li>
+              <li>Column A (row 5+): Student names</li>
+              <li>Or just run <strong>MIE Marks &gt; Setup Sheet Template</strong> after pasting the script</li>
             </ol>
           </div>
           <form onSubmit={handleConnect} className="space-y-4">
@@ -224,24 +226,44 @@ const MarksManagement = () => {
       {sheet.columns.length > 0 && (
         <div className="card">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Test Approvals</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sheet.columns.map((col) => (
-              <div key={col.colIndex} className={'flex items-center justify-between p-3 rounded-lg border ' + (col.approved ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200')}>
-                <div className="flex items-center gap-2">
-                  {col.approved ? <FiCheckCircle className="w-5 h-5 text-green-600" /> : <FiXCircle className="w-5 h-5 text-gray-400" />}
-                  <div>
-                    <p className="font-medium text-gray-900">{col.name}</p>
-                    <p className="text-xs text-gray-500">{col.approved ? 'Approved ' + (col.approvedAt ? new Date(col.approvedAt).toLocaleDateString() : '') : 'Pending'}</p>
+          {(() => {
+            // Group by branch + subject
+            var groups = {};
+            sheet.columns.forEach((col) => {
+              var key = (col.branch || 'Unknown') + ' | ' + (col.subject || 'Unknown');
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(col);
+            });
+            return Object.keys(groups).map((key) => {
+              var parts = key.split(' | ');
+              return (
+                <div key={key} className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2 py-0.5 rounded">{parts[0]}</span>
+                    <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">{parts[1]}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {groups[key].map((col) => (
+                      <div key={col.colIndex} className={'flex items-center justify-between p-2.5 rounded-lg border ' + (col.approved ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200')}>
+                        <div className="flex items-center gap-2">
+                          {col.approved ? <FiCheckCircle className="w-4 h-4 text-green-600" /> : <FiXCircle className="w-4 h-4 text-gray-400" />}
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{col.name}</p>
+                            <p className="text-xs text-gray-500">{col.approved ? 'Sent' : 'Pending'}</p>
+                          </div>
+                        </div>
+                        {col.approved && (
+                          <button onClick={() => handleReset(col.colIndex)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1" title="Reset">
+                            <FiRefreshCw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                {col.approved && (
-                  <button onClick={() => handleReset(col.colIndex)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1" title="Reset approval">
-                    <FiRefreshCw className="w-3 h-3" /> Reset
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+              );
+            });
+          })()}
         </div>
       )}
 
