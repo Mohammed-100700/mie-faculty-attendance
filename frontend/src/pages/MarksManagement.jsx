@@ -98,10 +98,10 @@ const MarksManagement = () => {
             <p className="font-semibold mb-2">Before you start:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Create a new Google Sheet</li>
-              <li>Row 1: Test names (starting from column B)</li>
-              <li>Row 2: Leave empty (checkboxes will go here)</li>
-              <li>Column A: Student names (starting from row 3)</li>
-              <li>Share the sheet with edit access</li>
+              <li>Column A (row 3+): Student names</li>
+              <li>Row 1 (columns B+): Test/Exam names (e.g., Quiz 1, Midterm)</li>
+              <li>Row 2: Leave empty (checkboxes will be added by the script)</li>
+              <li>Fill in marks for each student under each test column</li>
             </ol>
           </div>
           <form onSubmit={handleConnect} className="space-y-4">
@@ -177,10 +177,11 @@ const MarksManagement = () => {
               <li>Go to <strong>Extensions &gt; Apps Script</strong></li>
               <li>Delete any existing code and paste the script above</li>
               <li>Save the project (Ctrl+S)</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">createCheckboxes()</code> - creates checkboxes in row 2</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">testEmail()</code> - verifies email works</li>
-              <li>Authorize the script when prompted</li>
-              <li>Return to your sheet - checking a checkbox sends that column's marks via email</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">createCheckboxes()</code> once - creates checkboxes in row 2</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">testEmail()</code> once - verifies email delivery</li>
+              <li>Authorize the script when prompted (click through all warnings)</li>
+              <li>Refresh your sheet - you will see a new <strong>"MIE Marks"</strong> menu</li>
+              <li>To send: check boxes for desired columns, then click <strong>MIE Marks &gt; Send Selected Columns</strong></li>
             </ol>
           </div>
         </div>
