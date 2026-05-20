@@ -46,10 +46,10 @@ const MarksManagement = () => {
     }
   };
 
-  const handleReset = async (colIndex) => {
+  const handleReset = async (colIndex, sheetName) => {
     if (!window.confirm('Reset this column approval?')) return;
     try {
-      const res = await resetColumn(colIndex);
+      const res = await resetColumn(colIndex, sheetName);
       setSheet(res.data.data);
     } catch { alert('Failed to reset column.'); }
   };
@@ -95,15 +95,13 @@ const MarksManagement = () => {
             Connect Google Sheet
           </h3>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-sm text-blue-800">
-            <p className="font-semibold mb-2">Sheet structure:</p>
+            <p className="font-semibold mb-2">Workbook structure (one workbook, multiple sheets):</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Create a new Google Sheet</li>
-              <li>Row 1: Branch names (Dhanmondi, Uttara)</li>
-              <li>Row 2: Subject names (Mathematics, Physics)</li>
-              <li>Row 3: Test names (Quiz 1, Midterm, Final)</li>
-              <li>Row 4: Checkboxes (added by script)</li>
-              <li>Column A (row 5+): Student names</li>
-              <li>Or just run <strong>MIE Marks &gt; Setup Sheet Template</strong> after pasting the script</li>
+              <li>Create a new Google Sheet workbook</li>
+              <li>Each sheet = one batch (September, December, March)</li>
+              <li>Each sheet has: Row 1=Branch, Row 2=Subject, Row 3=Tests, Row 4=Checkboxes</li>
+              <li>Column A (row 5+): Student names (different per batch)</li>
+              <li>After pasting script, run <strong>MIE Marks &gt; Setup All Batch Sheets</strong></li>
             </ol>
           </div>
           <form onSubmit={handleConnect} className="space-y-4">
@@ -223,21 +221,26 @@ const MarksManagement = () => {
         </div>
       )}
 
-      {sheet.columns.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Test Approvals</h3>
-          {(() => {
-            // Group by branch + subject
-            var groups = {};
-            sheet.columns.forEach((col) => {
-              var key = (col.branch || 'Unknown') + ' | ' + (col.subject || 'Unknown');
-              if (!groups[key]) groups[key] = [];
-              groups[key].push(col);
-            });
-            return Object.keys(groups).map((key) => {
+      {sheet.sheets && sheet.sheets.length > 0 && sheet.sheets.map((s) => {
+        var totalCols = s.columns.length;
+        var approvedCols = s.columns.filter((c) => c.approved).length;
+        // Group by branch + subject
+        var groups = {};
+        s.columns.forEach((col) => {
+          var key = (col.branch || 'Unknown') + ' | ' + (col.subject || 'Unknown');
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(col);
+        });
+        return (
+          <div key={s.name} className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{s.name} Batch</h3>
+              <span className="text-sm text-gray-500">{approvedCols}/{totalCols} sent</span>
+            </div>
+            {Object.keys(groups).map((key) => {
               var parts = key.split(' | ');
               return (
-                <div key={key} className="mb-4">
+                <div key={key} className="mb-3">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2 py-0.5 rounded">{parts[0]}</span>
                     <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">{parts[1]}</span>
@@ -253,7 +256,7 @@ const MarksManagement = () => {
                           </div>
                         </div>
                         {col.approved && (
-                          <button onClick={() => handleReset(col.colIndex)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1" title="Reset">
+                          <button onClick={() => handleReset(col.colIndex, s.name)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1" title="Reset">
                             <FiRefreshCw className="w-3 h-3" />
                           </button>
                         )}
@@ -262,10 +265,10 @@ const MarksManagement = () => {
                   </div>
                 </div>
               );
-            });
-          })()}
-        </div>
-      )}
+            })}
+          </div>
+        );
+      })}
 
       <div className="card">
         <div className="flex items-center justify-between mb-4">

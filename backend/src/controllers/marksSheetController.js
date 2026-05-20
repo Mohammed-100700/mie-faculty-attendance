@@ -48,16 +48,26 @@ const getMySheet = async (req, res, next) => {
 // @route   POST /api/marks-sheets/webhook
 const updateApprovals = async (req, res, next) => {
   try {
-    const { sheetId, columns } = req.body;
+    const { sheetId, sheetName, columns } = req.body;
 
-    const sheet = await MarksSheet.findOne({ sheetId });
-    if (!sheet) {
+    const doc = await MarksSheet.findOne({ sheetId });
+    if (!doc) {
       return res.status(404).json({ success: false, message: 'Sheet not found.' });
     }
 
-    sheet.columns = columns;
-    sheet.allApproved = columns.length > 0 && columns.every((c) => c.approved);
-    await sheet.save();
+    // Update columns for the specific sheet (batch)
+    if (sheetName && doc.sheets) {
+      const sheetDoc = doc.sheets.find((s) => s.name === sheetName);
+      if (sheetDoc) {
+        sheetDoc.columns = columns;
+      } else {
+        doc.sheets.push({ name: sheetName, columns });
+      }
+    } else {
+      // Legacy: single sheet mode
+      doc.sheets = [{ name: 'Default', columns }];
+    }
+    await doc.save();
 
     res.json({ success: true, data: sheet });
   } catch (error) {
@@ -85,19 +95,26 @@ const markEmailSent = async (req, res, next) => {
 // @route   PUT /api/marks-sheets/reset-column
 const resetColumn = async (req, res, next) => {
   try {
-    const { colIndex } = req.body;
-    const sheet = await MarksSheet.findOne({ lecturerId: req.user._id });
-    if (!sheet) {
+    const { colIndex, sheetName } = req.body;
+    const doc = await MarksSheet.findOne({ lecturerId: req.user._id });
+    if (!doc) {
       return res.status(404).json({ success: false, message: 'No sheet connected.' });
     }
 
-    const col = sheet.columns.find((c) => c.colIndex === colIndex);
-    if (col) {
-      col.approved = false;
-      col.approvedAt = null;
+    // Find the column in the specific sheet
+    if (doc.sheets && doc.sheets.length > 0) {
+      const targetSheet = sheetName
+        ? doc.sheets.find((s) => s.name === sheetName)
+        : doc.sheets[0];
+      if (targetSheet) {
+        const col = targetSheet.columns.find((c) => c.colIndex === colIndex);
+        if (col) {
+          col.approved = false;
+          col.approvedAt = null;
+        }
+      }
     }
-    sheet.allApproved = sheet.columns.length > 0 && sheet.columns.every((c) => c.approved);
-    await sheet.save();
+    await doc.save();
 
     res.json({ success: true, data: sheet });
   } catch (error) {

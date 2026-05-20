@@ -20,14 +20,19 @@ const marksSheetSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    columns: [
+    sheets: [
       {
         name: String,
-        branch: String,
-        subject: String,
-        colIndex: Number,
-        approved: { type: Boolean, default: false },
-        approvedAt: { type: Date, default: null },
+        columns: [
+          {
+            name: String,
+            branch: String,
+            subject: String,
+            colIndex: Number,
+            approved: { type: Boolean, default: false },
+            approvedAt: { type: Date, default: null },
+          },
+        ],
       },
     ],
     allApproved: {
