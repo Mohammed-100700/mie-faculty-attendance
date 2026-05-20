@@ -112,7 +112,7 @@ const MarksManagement = () => {
             <div>
               <label className="label">Staff Email</label>
               <input type="email" value={connectForm.staffEmail} onChange={(e) => setConnectForm((p) => ({ ...p, staffEmail: e.target.value }))} className="input-field" placeholder="staff@mie.com" required />
-              <p className="text-xs text-gray-400 mt-1">Summary email will be sent here when all columns are approved</p>
+              <p className="text-xs text-gray-400 mt-1">Email will be sent here when each test column is approved</p>
             </div>
             <button type="submit" className="btn-primary w-full" disabled={connectLoading}>
               {connectLoading ? 'Connecting...' : 'Connect Sheet'}
@@ -177,10 +177,10 @@ const MarksManagement = () => {
               <li>Go to <strong>Extensions &gt; Apps Script</strong></li>
               <li>Delete any existing code and paste the script above</li>
               <li>Save the project (Ctrl+S)</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">createCheckboxes()</code> - this adds checkboxes to row 2</li>
-              <li>Run <code className="bg-gray-100 px-1 rounded">createTrigger()</code> - this enables email sending</li>
-              <li>Authorize the script when prompted (click through the warnings)</li>
-              <li>Return to your sheet - checkboxes in row 2 will now sync and send emails</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">createCheckboxes()</code> - creates checkboxes in row 2</li>
+              <li>Run <code className="bg-gray-100 px-1 rounded">testEmail()</code> - verifies email works</li>
+              <li>Authorize the script when prompted</li>
+              <li>Return to your sheet - checking a checkbox sends that column's marks via email</li>
             </ol>
           </div>
         </div>
