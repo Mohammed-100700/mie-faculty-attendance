@@ -9,6 +9,7 @@ const subjectRoutes = require('./routes/subjectRoutes');
 const classLogRoutes = require('./routes/classLogRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const qrRoutes = require('./routes/qrRoutes');
+const marksSheetRoutes = require('./routes/marksSheetRoutes');
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/class-logs', classLogRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/qr', qrRoutes);
+app.use('/api/marks-sheets', marksSheetRoutes);
 
 // Error handling
 app.use(notFound);

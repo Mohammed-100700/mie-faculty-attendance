@@ -2,13 +2,13 @@ import { NavLink } from 'react-router-dom';
 import {
   FiHome,
   FiUser,
-  FiBook,
   FiPlusCircle,
   FiGrid,
   FiList,
   FiFileText,
   FiSettings,
   FiLogOut,
+  FiClipboard,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 
@@ -21,6 +21,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance' },
     { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In' },
     { to: '/my-logs', icon: FiList, label: 'My Attendance' },
+    { to: '/marks', icon: FiClipboard, label: 'Marks Management' },
     { to: '/salary-report', icon: FiFileText, label: 'Salary Report' },
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];

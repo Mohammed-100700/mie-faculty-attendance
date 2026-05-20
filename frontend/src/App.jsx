@@ -15,6 +15,7 @@ import MyClassLogs from './pages/MyClassLogs';
 import EditClassLog from './pages/EditClassLog';
 import SalaryReport from './pages/SalaryReport';
 import Settings from './pages/Settings';
+import MarksManagement from './pages/MarksManagement';
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
             <Route path="my-logs" element={<MyClassLogs />} />
             <Route path="edit-log/:id" element={<EditClassLog />} />
             <Route path="salary-report" element={<SalaryReport />} />
+            <Route path="marks" element={<MarksManagement />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
