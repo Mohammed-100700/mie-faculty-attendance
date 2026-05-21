@@ -1,13 +1,38 @@
 const Workbook = require('../models/Workbook');
+const User = require('../models/User');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Encrypt/decrypt helpers for storing app passwords
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || 'default-key-change-in-production-32chars!!';
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decrypt(text) {
+  const parts = text.split(':');
+  const iv = Buffer.from(parts[0], 'hex');
+  const encrypted = Buffer.from(parts[1], 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let decrypted = decipher.update(encrypted);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+
+// Create transporter per user
+function createTransporter(email, appPassword) {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: { user: email, pass: appPassword },
+  });
+}
 
 // @desc    Get workbook
 // @route   GET /api/workbook
@@ -27,14 +52,24 @@ const getWorkbook = async (req, res, next) => {
   }
 };
 
-// @desc    Update staff email
-// @route   PUT /api/workbook/staff-email
-const updateStaffEmail = async (req, res, next) => {
+// @desc    Update lecturer email settings (Gmail + App Password)
+// @route   PUT /api/workbook/email-settings
+const updateEmailSettings = async (req, res, next) => {
   try {
-    const { staffEmail } = req.body;
+    const { lecturerEmail, staffEmail } = req.body;
+    const update = { staffEmail };
+
+    // If lecturer provided email + app password, encrypt and store in User model
+    if (lecturerEmail && req.body.appPassword) {
+      await User.findByIdAndUpdate(req.user._id, {
+        email: lecturerEmail,
+        emailAppPassword: encrypt(req.body.appPassword),
+      });
+    }
+
     const workbook = await Workbook.findOneAndUpdate(
       { lecturerId: req.user._id },
-      { staffEmail },
+      update,
       { new: true, upsert: true }
     );
     res.json({ success: true, data: workbook });
@@ -237,6 +272,12 @@ const sendEmail = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Staff email not set. Go to Settings.' });
     }
 
+    // Get lecturer's email credentials
+    const lecturer = await User.findById(req.user._id);
+    if (!lecturer.email || !lecturer.emailAppPassword) {
+      return res.status(400).json({ success: false, message: 'Email not configured. Go to Settings and set up your Gmail.' });
+    }
+
     const lecturerName = req.user.name;
     const subject = `Marks: ${sheet.name} - ${lecturerName}`;
 
@@ -284,8 +325,12 @@ const sendEmail = async (req, res, next) => {
     html += `<p style="color:#94a3b8;font-size:11px;margin:0;padding:10px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;">MIE Faculty Attendance • ${sheet.students.length} student(s) • ${approvedTests.length} test(s)</p>`;
     html += '</div>';
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    // Send using lecturer's own Gmail
+    const appPassword = decrypt(lecturer.emailAppPassword);
+    const userTransporter = createTransporter(lecturer.email, appPassword);
+
+    await userTransporter.sendMail({
+      from: `"${lecturerName}" <${lecturer.email}>`,
       to: workbook.staffEmail,
       subject,
       html,

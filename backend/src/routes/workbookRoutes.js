@@ -8,7 +8,7 @@ const {
 } = require('../controllers/workbookController');
 
 router.get('/', protect, getWorkbook);
-router.put('/staff-email', protect, updateStaffEmail);
+router.put('/email-settings', protect, updateEmailSettings);
 router.post('/sheets', protect, addSheet);
 router.delete('/sheets/:sheetIndex', protect, deleteSheet);
 router.post('/sheets/:sheetIndex/tests', protect, addTest);

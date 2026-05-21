@@ -1,7 +1,8 @@
 import api from './axios';
 
 export const getWorkbook = () => api.get('/workbook');
-export const updateStaffEmail = (staffEmail) => api.put('/workbook/staff-email', { staffEmail });
+export const updateEmailSettings = (lecturerEmail, staffEmail, appPassword) =>
+  api.put('/workbook/email-settings', { lecturerEmail, staffEmail, appPassword });
 export const addSheet = (batch, branch, subject) => api.post('/workbook/sheets', { batch, branch, subject });
 export const deleteSheet = (sheetIndex) => api.delete(`/workbook/sheets/${sheetIndex}`);
 export const addTest = (sheetIndex, testName) => api.post(`/workbook/sheets/${sheetIndex}/tests`, { testName });

@@ -37,6 +37,8 @@ const userSchema = new mongoose.Schema(
         enum: ['Dhanmondi', 'Uttara'],
       },
     ],
+    // Email settings for sending marks
+    emailAppPassword: { type: String, default: null }, // encrypted Gmail App Password
     ratePerClass: {
       type: Number,
       required: [true, 'Rate per class is required'],

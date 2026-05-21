@@ -4,7 +4,7 @@ import {
   FiBookOpen, FiUsers, FiSettings, FiX, FiMail,
 } from 'react-icons/fi';
 import {
-  getWorkbook, updateStaffEmail, addSheet, deleteSheet,
+  getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, toggleTestApproval, sendEmail,
 } from '../api/workbookApi';
@@ -18,6 +18,8 @@ const MarksManagement = () => {
   const [activeSheet, setActiveSheet] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [staffEmail, setStaffEmail] = useState('');
+  const [lecturerEmail, setLecturerEmail] = useState('');
+  const [appPassword, setAppPassword] = useState('');
 
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
@@ -152,12 +154,23 @@ const MarksManagement = () => {
     }
   };
 
-  const handleUpdateStaffEmail = async () => {
+  const handleSaveEmailSettings = async () => {
+    if (!lecturerEmail.trim()) {
+      showToast('Please enter your Gmail address', 'error');
+      return;
+    }
+    if (!appPassword.trim()) {
+      showToast('Please enter your Gmail App Password', 'error');
+      return;
+    }
     try {
-      const res = await updateStaffEmail(staffEmail);
+      const res = await updateEmailSettings(lecturerEmail.trim(), staffEmail.trim(), appPassword.trim());
       setWorkbook(res.data.data);
-      showToast('Staff email updated!');
-    } catch { showToast('Failed', 'error'); }
+      setAppPassword(''); // clear password from form after saving
+      showToast('Email settings saved! You can now send marks.');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to save settings', 'error');
+    }
   };
 
   if (loading) {
@@ -208,16 +221,42 @@ const MarksManagement = () => {
       {showSettings && (
         <div className="card border border-gray-200">
           <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><FiMail className="w-4 h-4" /> Email Settings</h3>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label className="label">Staff Email</label>
-              <input type="email" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} className="input-field" placeholder="staff@mie.com" />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Your Gmail Address</label>
+                <input type="email" value={lecturerEmail} onChange={(e) => setLecturerEmail(e.target.value)} className="input-field" placeholder="yourname@gmail.com" />
+                <p className="text-xs text-gray-400 mt-1">Emails will be sent from this address</p>
+              </div>
+              <div>
+                <label className="label">Gmail App Password</label>
+                <input type="password" value={appPassword} onChange={(e) => setAppPassword(e.target.value)} className="input-field" placeholder="xxxx xxxx xxxx xxxx" />
+                <p className="text-xs text-gray-400 mt-1">
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">Generate App Password</a> (requires 2FA)
+                </p>
+              </div>
             </div>
-            <button onClick={handleUpdateStaffEmail} className="btn-primary">Save</button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Staff Email (recipient)</label>
+                <input type="email" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} className="input-field" placeholder="staff@mie.com" />
+              </div>
+              <div className="flex items-end">
+                <button onClick={handleSaveEmailSettings} className="btn-primary w-full">Save Settings</button>
+              </div>
+            </div>
+            {workbook.lastEmailSentAt && (
+              <p className="text-xs text-gray-400">Last email sent: {new Date(workbook.lastEmailSentAt).toLocaleString()}</p>
+            )}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-700">
+              <strong>Setup guide:</strong>
+              <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                <li>Enable <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="underline">2-Step Verification</a> on your Google account</li>
+                <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="underline">App Passwords</a> and generate one for "Mail"</li>
+                <li>Enter the 16-character password above</li>
+              </ol>
+            </div>
           </div>
-          {workbook.lastEmailSentAt && (
-            <p className="text-xs text-gray-400 mt-2">Last sent: {new Date(workbook.lastEmailSentAt).toLocaleString()}</p>
-          )}
         </div>
       )}
 
