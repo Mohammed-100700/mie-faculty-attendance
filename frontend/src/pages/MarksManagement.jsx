@@ -6,7 +6,7 @@ import {
 import {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, sendEmail,
+  updateMark, toggleTestApproval, sendEmail, syncMarks,
 } from '../api/workbookApi';
 
 const BATCHES = ['September', 'December', 'March'];
@@ -52,7 +52,13 @@ const MarksManagement = () => {
     }
   };
 
-  useEffect(() => { fetchWorkbook(); }, []);
+  useEffect(() => {
+    fetchWorkbook();
+    // Auto-sync marks on load to fix any missing entries
+    syncMarks().then((res) => {
+      if (res.data.data) setWorkbook(res.data.data);
+    }).catch(() => {});
+  }, []);
 
   // --- Handlers ---
 
@@ -137,14 +143,24 @@ const MarksManagement = () => {
       const updated = JSON.parse(JSON.stringify(prev));
       const sheet = updated.sheets[activeSheet];
       if (!sheet || !sheet.students[studentIndex]) return prev;
-      const mark = sheet.students[studentIndex].marks.find((m) => m.colIndex === colIndex);
-      if (mark) mark.value = value;
+      const student = sheet.students[studentIndex];
+      let mark = student.marks.find((m) => m.colIndex === colIndex);
+      if (mark) {
+        mark.value = value;
+      } else {
+        // Mark entry doesn't exist (e.g. test was added after student) — create it
+        student.marks.push({ colIndex, value });
+        // Keep marks sorted by colIndex
+        student.marks.sort((a, b) => a.colIndex - b.colIndex);
+      }
       return updated;
     });
   };
 
   const handleMarkBlur = async (studentIndex, colIndex) => {
-    const sheet = workbook.sheets[activeSheet];
+    // Use a ref-like approach: read from the latest workbook state
+    const currentWorkbook = workbook;
+    const sheet = currentWorkbook.sheets[activeSheet];
     if (!sheet) return;
     const student = sheet.students[studentIndex];
     if (!student) return;

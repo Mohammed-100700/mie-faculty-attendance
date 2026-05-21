@@ -12,3 +12,4 @@ export const deleteStudent = (sheetIndex, studentIndex) => api.delete(`/workbook
 export const updateMark = (sheetIndex, studentIndex, colIndex, value) => api.put(`/workbook/sheets/${sheetIndex}/students/${studentIndex}/marks/${colIndex}`, { value });
 export const toggleTestApproval = (sheetIndex, testIndex) => api.put(`/workbook/sheets/${sheetIndex}/tests/${testIndex}/toggle`);
 export const sendEmail = (sheetIndex) => api.post(`/workbook/sheets/${sheetIndex}/send`);
+export const syncMarks = () => api.post('/workbook/sync-marks');

@@ -4,7 +4,7 @@ const { protect } = require('../middleware/authMiddleware');
 const {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, sendEmail,
+  updateMark, toggleTestApproval, sendEmail, syncMarks,
 } = require('../controllers/workbookController');
 
 router.get('/', protect, getWorkbook);
@@ -18,5 +18,6 @@ router.delete('/sheets/:sheetIndex/students/:studentIndex', protect, deleteStude
 router.put('/sheets/:sheetIndex/students/:studentIndex/marks/:colIndex', protect, updateMark);
 router.put('/sheets/:sheetIndex/tests/:testIndex/toggle', protect, toggleTestApproval);
 router.post('/sheets/:sheetIndex/send', protect, sendEmail);
+router.post('/sync-marks', protect, syncMarks);
 
 module.exports = router;

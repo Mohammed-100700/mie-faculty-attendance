@@ -363,6 +363,35 @@ const sendEmail = async (req, res, next) => {
   }
 };
 
+// @desc    Sync marks — add missing mark entries for students when tests were added after them
+// @route   POST /api/workbook/sync-marks
+const syncMarks = async (req, res, next) => {
+  try {
+    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
+    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+
+    let fixed = 0;
+    for (const sheet of workbook.sheets) {
+      const testColIndexes = sheet.tests.map((t) => t.colIndex);
+      for (const student of sheet.students) {
+        const existingColIndexes = student.marks.map((m) => m.colIndex);
+        for (const colIdx of testColIndexes) {
+          if (!existingColIndexes.includes(colIdx)) {
+            student.marks.push({ colIndex: colIdx, value: '' });
+            fixed++;
+          }
+        }
+        student.marks.sort((a, b) => a.colIndex - b.colIndex);
+      }
+    }
+
+    await workbook.save();
+    res.json({ success: true, message: `Synced ${fixed} missing mark entries.`, data: workbook });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getWorkbook,
   updateEmailSettings,
@@ -375,4 +404,5 @@ module.exports = {
   updateMark,
   toggleTestApproval,
   sendEmail,
+  syncMarks,
 };
