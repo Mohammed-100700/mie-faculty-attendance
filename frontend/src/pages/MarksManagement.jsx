@@ -77,7 +77,15 @@ const MarksManagement = () => {
     try {
       const res = await deleteSheet(index);
       setWorkbook(res.data.data);
-      if (activeSheet >= res.data.data.sheets.length) setActiveSheet(0);
+      const remaining = res.data.data.sheets.length;
+      if (remaining === 0) {
+        setActiveSheet(0);
+      } else if (activeSheet >= remaining) {
+        setActiveSheet(remaining - 1);
+      } else if (activeSheet === index) {
+        // Deleted the active sheet, move to same index (which is now next sheet) or 0
+        setActiveSheet(Math.min(activeSheet, remaining - 1));
+      }
       showToast('Sheet deleted');
     } catch { showToast('Failed to delete', 'error'); }
   };
@@ -123,10 +131,25 @@ const MarksManagement = () => {
     } catch { showToast('Failed to delete', 'error'); }
   };
 
-  const handleMarkChange = async (studentIndex, colIndex, value) => {
+  // Local mark editing — update local state immediately, sync to backend on blur
+  const handleMarkChange = (studentIndex, colIndex, value) => {
+    setWorkbook((prev) => {
+      const updated = { ...prev };
+      const sheet = updated.sheets[activeSheet];
+      const student = sheet.students[studentIndex];
+      const mark = student.marks.find((m) => m.colIndex === colIndex);
+      if (mark) mark.value = value;
+      return updated;
+    });
+  };
+
+  const handleMarkBlur = async (studentIndex, colIndex) => {
+    const sheet = workbook.sheets[activeSheet];
+    const student = sheet.students[studentIndex];
+    const mark = student.marks.find((m) => m.colIndex === colIndex);
+    if (!mark) return;
     try {
-      const res = await updateMark(activeSheet, studentIndex, colIndex, value);
-      setWorkbook(res.data.data);
+      await updateMark(activeSheet, studentIndex, colIndex, mark.value);
     } catch { /* silent */ }
   };
 
@@ -434,6 +457,7 @@ const MarksManagement = () => {
                                 type="text"
                                 value={value}
                                 onChange={(e) => handleMarkChange(sIdx, test.colIndex, e.target.value)}
+                                onBlur={() => handleMarkBlur(sIdx, test.colIndex)}
                                 className={`w-14 text-center py-1 px-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 ${test.approved ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}
                                 placeholder="-"
                               />
