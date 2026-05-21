@@ -145,6 +145,10 @@ const addTest = async (req, res, next) => {
 
     const colIndex = sheet.tests.length + 1;
     sheet.tests.push({ name: testName, colIndex, approved: false, approvedAt: null });
+    // Add mark entry for this test to all existing students
+    for (const student of sheet.students) {
+      student.marks.push({ colIndex, value: '' });
+    }
     await workbook.save();
     res.json({ success: true, data: workbook });
   } catch (error) {
@@ -161,9 +165,16 @@ const deleteTest = async (req, res, next) => {
     if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
 
     const sheet = workbook.sheets[sheetIndex];
+    const deletedColIndex = sheet.tests[testIndex].colIndex;
     sheet.tests.splice(testIndex, 1);
     // Recalculate colIndexes
     sheet.tests.forEach((t, i) => { t.colIndex = i + 1; });
+    // Remove mark entries for deleted test from all students
+    for (const student of sheet.students) {
+      student.marks = student.marks.filter((m) => m.colIndex !== deletedColIndex);
+      // Recalculate student mark colIndexes
+      student.marks.forEach((m, i) => { m.colIndex = i + 1; });
+    }
 
     await workbook.save();
     res.json({ success: true, data: workbook });
