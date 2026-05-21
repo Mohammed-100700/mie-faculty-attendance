@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const {
-  getWorkbook, updateStaffEmail, addSheet, deleteSheet,
+  getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, toggleTestApproval, sendEmail,
 } = require('../controllers/workbookController');

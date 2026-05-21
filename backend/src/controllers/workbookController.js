@@ -354,7 +354,7 @@ const sendEmail = async (req, res, next) => {
 
 module.exports = {
   getWorkbook,
-  updateStaffEmail,
+  updateEmailSettings,
   addSheet,
   deleteSheet,
   addTest,
