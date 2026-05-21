@@ -134,10 +134,10 @@ const MarksManagement = () => {
   // Local mark editing — update local state immediately, sync to backend on blur
   const handleMarkChange = (studentIndex, colIndex, value) => {
     setWorkbook((prev) => {
-      const updated = { ...prev };
+      const updated = JSON.parse(JSON.stringify(prev));
       const sheet = updated.sheets[activeSheet];
-      const student = sheet.students[studentIndex];
-      const mark = student.marks.find((m) => m.colIndex === colIndex);
+      if (!sheet || !sheet.students[studentIndex]) return prev;
+      const mark = sheet.students[studentIndex].marks.find((m) => m.colIndex === colIndex);
       if (mark) mark.value = value;
       return updated;
     });
@@ -145,7 +145,9 @@ const MarksManagement = () => {
 
   const handleMarkBlur = async (studentIndex, colIndex) => {
     const sheet = workbook.sheets[activeSheet];
+    if (!sheet) return;
     const student = sheet.students[studentIndex];
+    if (!student) return;
     const mark = student.marks.find((m) => m.colIndex === colIndex);
     if (!mark) return;
     try {
@@ -301,14 +303,13 @@ const MarksManagement = () => {
                 <span className="text-xs opacity-75">{s.branch}</span>
                 <span>{s.subject}</span>
                 <span className="text-xs opacity-75">({s.students.length})</span>
-                {workbook.sheets.length > 1 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteSheet(s.index); }}
-                    className="ml-1 hover:bg-white/20 rounded p-0.5"
-                  >
-                    <FiX className="w-3 h-3" />
-                  </button>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteSheet(s.index); }}
+                  className="ml-1 hover:bg-white/20 rounded p-0.5"
+                  title="Delete sheet"
+                >
+                  <FiX className="w-3 h-3" />
+                </button>
               </button>
             ))}
           </div>
@@ -505,6 +506,20 @@ const MarksManagement = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* No sheets state */}
+      {(!sheet || workbook.sheets.length === 0) && (
+        <div className="card text-center py-16">
+          <FiBookOpen className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">No Sheets Yet</h3>
+          <p className="text-gray-500 mb-4 max-w-md mx-auto">
+            Create your first sheet to start managing marks. Each sheet represents a batch + branch + subject combination.
+          </p>
+          <button onClick={() => setShowAddSheet(true)} className="btn-primary inline-flex items-center gap-2">
+            <FiPlus className="w-4 h-4" /> Create Your First Sheet
+          </button>
+        </div>
       )}
     </div>
   );
