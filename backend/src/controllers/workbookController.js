@@ -4,7 +4,7 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 // Encrypt/decrypt helpers for storing app passwords
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || 'default-key-change-in-production-32chars!!';
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || 'my-32-character-secret-key-here!';
 
 function encrypt(text) {
   const iv = crypto.randomBytes(16);
