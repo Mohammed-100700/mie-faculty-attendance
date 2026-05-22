@@ -34,6 +34,7 @@ const MarksManagement = () => {
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [bulkStudentNames, setBulkStudentNames] = useState('');
   const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -498,7 +499,37 @@ const MarksManagement = () => {
             </div>
 
             {sheet.students.length > 0 && sheet.tests.length > 0 ? (
-              <div className="overflow-x-auto">
+              <>
+                {/* Search */}
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="input-field text-sm py-1.5 px-3 w-full max-w-xs"
+                    placeholder="Search students..."
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {sheet.students.length > 0 && sheet.tests.length > 0 ? (() => {
+              const filteredStudents = studentSearch.trim()
+                ? sheet.students.filter((s) =>
+                    s.name.toLowerCase().includes(studentSearch.toLowerCase())
+                  )
+                : sheet.students;
+
+              if (filteredStudents.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No students match &quot;{studentSearch}&quot;</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
@@ -512,12 +543,14 @@ const MarksManagement = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {sheet.students.map((student, sIdx) => (
-                      <tr key={sIdx} className="border-b border-gray-100 hover:bg-gray-50">
+                    {filteredStudents.map((student) => {
+                      const realIndex = sheet.students.indexOf(student);
+                      return (
+                      <tr key={realIndex} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 px-4 font-medium text-gray-900 sticky left-0 bg-white z-10">
                           <div className="flex items-center justify-between gap-2">
                             <span>{student.name}</span>
-                            <button onClick={() => handleDeleteStudent(sIdx)} className="text-gray-300 hover:text-red-500"><FiTrash2 className="w-3 h-3" /></button>
+                            <button onClick={() => handleDeleteStudent(realIndex)} className="text-gray-300 hover:text-red-500"><FiTrash2 className="w-3 h-3" /></button>
                           </div>
                         </td>
                         {sheet.tests.map((test, tIdx) => {
@@ -528,8 +561,8 @@ const MarksManagement = () => {
                               <input
                                 type="text"
                                 value={value}
-                                onChange={(e) => handleMarkChange(sIdx, test.colIndex, e.target.value)}
-                                onBlur={() => handleMarkBlur(sIdx, test.colIndex)}
+                                onChange={(e) => handleMarkChange(realIndex, test.colIndex, e.target.value)}
+                                onBlur={() => handleMarkBlur(realIndex, test.colIndex)}
                                 className={`w-14 text-center py-1 px-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 ${test.approved ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}
                                 placeholder="-"
                               />
@@ -538,11 +571,13 @@ const MarksManagement = () => {
                         })}
                         <td></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            ) : sheet.students.length === 0 ? (
+              );
+            })() : sheet.students.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <FiUsers className="w-10 h-10 mx-auto mb-2 opacity-50" />
                 <p>No students yet. Click "Add Student" to get started.</p>
