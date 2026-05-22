@@ -144,7 +144,8 @@ const addTest = async (req, res, next) => {
     if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
 
     const colIndex = sheet.tests.length + 1;
-    sheet.tests.push({ name: testName, colIndex, approved: false, approvedAt: null });
+    const maxMarks = req.body.maxMarks ? parseInt(req.body.maxMarks) : 100;
+    sheet.tests.push({ name: testName, colIndex, maxMarks, approved: false, approvedAt: null });
     // Add mark entry for this test to all existing students
     for (const student of sheet.students) {
       student.marks.push({ colIndex, value: '' });
@@ -307,14 +308,16 @@ const sendEmail = async (req, res, next) => {
         tableRows += '</tr>';
       }
 
+      const maxMarks = test.maxMarks || 100;
       testSections += '<div style="margin-top:16px;">';
       testSections += `<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:10px 16px;">`;
       testSections += `<strong style="color:#1e40af;font-size:14px;">${test.name}</strong>`;
+      testSections += `<span style="color:#64748b;font-size:12px;margin-left:8px;">(out of ${maxMarks})</span>`;
       testSections += '</div>';
       testSections += '<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none;">';
       testSections += '<thead><tr style="background:#f1f5f9;">';
       testSections += '<th style="padding:10px 14px;text-align:left;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;">Student</th>';
-      testSections += '<th style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;width:80px;">Mark</th>';
+      testSections += `<th style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;width:100px;">Mark (out of ${maxMarks})</th>`;
       testSections += '</tr></thead>';
       testSections += `<tbody>${tableRows}</tbody></table></div>`;
     }

@@ -29,6 +29,7 @@ const MarksManagement = () => {
 
   // Inline forms
   const [newTestName, setNewTestName] = useState('');
+  const [newTestMaxMarks, setNewTestMaxMarks] = useState(100);
   const [showAddTest, setShowAddTest] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
@@ -102,11 +103,13 @@ const MarksManagement = () => {
   const handleAddTest = async () => {
     if (!newTestName.trim()) return;
     try {
-      const res = await addTest(activeSheet, newTestName.trim());
+      const maxMarks = newTestMaxMarks && newTestMaxMarks > 0 ? parseInt(newTestMaxMarks) : 100;
+      const res = await addTest(activeSheet, newTestName.trim(), maxMarks);
       setWorkbook(res.data.data);
       setNewTestName('');
+      setNewTestMaxMarks(100);
       setShowAddTest(false);
-      showToast(`Test "${newTestName}" added!`);
+      showToast(`Test "${newTestName}" (out of ${maxMarks}) added!`);
     } catch { showToast('Failed to add test', 'error'); }
   };
 
@@ -441,10 +444,17 @@ const MarksManagement = () => {
             </div>
             <div className="flex gap-2">
               {showAddTest ? (
-                <div className="flex gap-2">
-                  <input type="text" value={newTestName} onChange={(e) => setNewTestName(e.target.value)} className="input-field text-sm py-1 px-2 w-32" placeholder="Test name" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAddTest(); if (e.key === 'Escape') setShowAddTest(false); }} />
-                  <button onClick={handleAddTest} className="btn-primary text-xs py-1 px-2">Add</button>
-                  <button onClick={() => { setShowAddTest(false); setNewTestName(''); }} className="btn-secondary text-xs py-1 px-2">Cancel</button>
+                <div className="flex gap-2 items-end">
+                  <div>
+                    <label className="label">Test Name</label>
+                    <input type="text" value={newTestName} onChange={(e) => setNewTestName(e.target.value)} className="input-field text-sm py-1 px-2 w-32" placeholder="e.g. Quiz 1" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAddTest(); if (e.key === 'Escape') setShowAddTest(false); }} />
+                  </div>
+                  <div>
+                    <label className="label">Max Marks</label>
+                    <input type="number" value={newTestMaxMarks} onChange={(e) => setNewTestMaxMarks(e.target.value)} className="input-field text-sm py-1 px-2 w-20" placeholder="100" min="1" />
+                  </div>
+                  <button onClick={handleAddTest} className="btn-primary text-xs py-1.5 px-3">Add</button>
+                  <button onClick={() => { setShowAddTest(false); setNewTestName(''); setNewTestMaxMarks(100); }} className="btn-secondary text-xs py-1.5 px-2">Cancel</button>
                 </div>
               ) : (
                 <button onClick={() => setShowAddTest(true)} className="btn-secondary text-sm flex items-center gap-1">
@@ -465,6 +475,7 @@ const MarksManagement = () => {
                       {test.approved ? <FiCheckSquare className="w-4 h-4 text-green-600" /> : <FiSquare className="w-4 h-4 text-gray-400" />}
                     </button>
                     <span className={`font-medium ${test.approved ? 'text-green-700' : 'text-gray-700'}`}>{test.name}</span>
+                    <span className="text-xs text-gray-400 ml-1">/ {test.maxMarks || 100}</span>
                     <button onClick={() => handleDeleteTest(idx)} className="text-gray-400 hover:text-red-500 ml-1"><FiX className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
@@ -535,8 +546,9 @@ const MarksManagement = () => {
                     <tr className="border-b border-gray-200">
                       <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50 sticky left-0 z-10 min-w-[150px]">Student</th>
                       {sheet.tests.map((test, idx) => (
-                        <th key={idx} className={`text-center py-3 px-3 font-semibold min-w-[80px] ${test.approved ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-700'}`}>
-                          {test.name}
+                        <th key={idx} className={`text-center py-3 px-3 font-semibold min-w-[90px] ${test.approved ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-700'}`}>
+                          <div>{test.name}</div>
+                          <div className="text-xs font-normal text-gray-400 mt-0.5">out of {test.maxMarks || 100}</div>
                         </th>
                       ))}
                       <th className="w-8"></th>

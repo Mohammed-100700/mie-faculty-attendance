@@ -5,7 +5,7 @@ export const updateEmailSettings = (lecturerEmail, staffEmail, appPassword) =>
   api.put('/workbook/email-settings', { lecturerEmail, staffEmail, appPassword });
 export const addSheet = (batch, branch, subject) => api.post('/workbook/sheets', { batch, branch, subject });
 export const deleteSheet = (sheetIndex) => api.delete(`/workbook/sheets/${sheetIndex}`);
-export const addTest = (sheetIndex, testName) => api.post(`/workbook/sheets/${sheetIndex}/tests`, { testName });
+export const addTest = (sheetIndex, testName, maxMarks) => api.post(`/workbook/sheets/${sheetIndex}/tests`, { testName, maxMarks });
 export const deleteTest = (sheetIndex, testIndex) => api.delete(`/workbook/sheets/${sheetIndex}/tests/${testIndex}`);
 export const addStudent = (sheetIndex, name) => api.post(`/workbook/sheets/${sheetIndex}/students`, { name });
 export const deleteStudent = (sheetIndex, studentIndex) => api.delete(`/workbook/sheets/${sheetIndex}/students/${studentIndex}`);

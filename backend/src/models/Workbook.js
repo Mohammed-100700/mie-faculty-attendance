@@ -9,6 +9,7 @@ const sheetSchema = new mongoose.Schema({
     {
       name: { type: String, required: true },
       colIndex: { type: Number, required: true },
+      maxMarks: { type: Number, default: 100 },
       approved: { type: Boolean, default: false },
       approvedAt: { type: Date, default: null },
     },
