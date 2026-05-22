@@ -32,6 +32,8 @@ const MarksManagement = () => {
   const [showAddTest, setShowAddTest] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [bulkStudentNames, setBulkStudentNames] = useState('');
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -125,6 +127,28 @@ const MarksManagement = () => {
       setShowAddStudent(false);
       showToast(`Student "${newStudentName}" added!`);
     } catch { showToast('Failed to add student', 'error'); }
+  };
+
+  const handleBulkAddStudents = async () => {
+    const names = bulkStudentNames
+      .split('\n')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    if (names.length === 0) {
+      showToast('Please enter at least one student name', 'error');
+      return;
+    }
+    try {
+      let added = 0;
+      for (const name of names) {
+        const res = await addStudent(activeSheet, name);
+        setWorkbook(res.data.data);
+        added++;
+      }
+      setBulkStudentNames('');
+      setShowBulkAdd(false);
+      showToast(`${added} student(s) added successfully!`);
+    } catch { showToast('Failed to add students', 'error'); }
   };
 
   const handleDeleteStudent = async (index) => {
@@ -378,6 +402,32 @@ const MarksManagement = () => {
         </div>
       )}
 
+      {/* Bulk Add Students Modal */}
+      {showBulkAdd && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg">
+            <h3 className="text-lg font-semibold mb-2">Add Multiple Students</h3>
+            <p className="text-sm text-gray-500 mb-4">Enter one student name per line. Empty lines will be ignored.</p>
+            <textarea
+              value={bulkStudentNames}
+              onChange={(e) => setBulkStudentNames(e.target.value)}
+              className="input-field w-full h-48 font-mono text-sm"
+              placeholder={"Ali Ahmed\nSara Khan\nMohammed Islam\nFatima Begum"}
+              autoFocus
+            />
+            <div className="flex justify-between items-center mt-3">
+              <span className="text-xs text-gray-400">
+                {bulkStudentNames.split('\n').filter((n) => n.trim()).length} student(s)
+              </span>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowBulkAdd(false); setBulkStudentNames(''); }} className="btn-secondary">Cancel</button>
+                <button onClick={handleBulkAddStudents} className="btn-primary">Add All</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active Sheet */}
       {sheet && (
         <>
@@ -427,7 +477,7 @@ const MarksManagement = () => {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2"><FiUsers className="w-5 h-5" /> Students & Marks</h3>
-              <div>
+              <div className="flex gap-2 items-center">
                 {showAddStudent ? (
                   <div className="flex gap-2">
                     <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="input-field text-sm py-1 px-2 w-40" placeholder="Student name" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAddStudent(); if (e.key === 'Escape') setShowAddStudent(false); }} />
@@ -435,9 +485,14 @@ const MarksManagement = () => {
                     <button onClick={() => { setShowAddStudent(false); setNewStudentName(''); }} className="btn-secondary text-xs py-1 px-2">Cancel</button>
                   </div>
                 ) : (
-                  <button onClick={() => setShowAddStudent(true)} className="btn-secondary text-sm flex items-center gap-1">
-                    <FiPlus className="w-3.5 h-3.5" /> Add Student
-                  </button>
+                  <>
+                    <button onClick={() => setShowAddStudent(true)} className="btn-secondary text-sm flex items-center gap-1">
+                      <FiPlus className="w-3.5 h-3.5" /> Add One
+                    </button>
+                    <button onClick={() => setShowBulkAdd(true)} className="btn-primary text-sm flex items-center gap-1">
+                      <FiUsers className="w-3.5 h-3.5" /> Add Multiple
+                    </button>
+                  </>
                 )}
               </div>
             </div>
