@@ -7,7 +7,27 @@ const register = async (req, res, next) => {
   try {
     const { name, email, password, phone, branches, ratePerClass } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
+    }
+
+    // Password strength
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
+    // Sanitize
+    const cleanName = name.trim().substring(0, 100);
+    const cleanEmail = email.trim().toLowerCase().substring(0, 100);
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    }
+
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -16,10 +36,10 @@ const register = async (req, res, next) => {
     }
 
     const user = await User.create({
-      name,
-      email,
+      name: cleanName,
+      email: cleanEmail,
       password,
-      phone: phone || '',
+      phone: (phone || '').trim().substring(0, 20),
       branches: branches || [],
       ratePerClass: ratePerClass || 1500,
     });

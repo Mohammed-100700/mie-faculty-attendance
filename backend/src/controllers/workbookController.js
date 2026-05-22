@@ -4,7 +4,17 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 // Encrypt/decrypt helpers for storing app passwords
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || 'my-32-character-secret-key-here!';
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+  console.error('FATAL: EMAIL_ENCRYPTION_KEY must be exactly 32 characters. Set it in .env');
+  process.exit(1);
+}
+
+// Sanitize helper — strip HTML tags and limit length
+function sanitize(str, maxLen = 200) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/<[^>]*>/g, '').trim().substring(0, maxLen);
+}
 
 function encrypt(text) {
   const iv = crypto.randomBytes(16);
@@ -57,13 +67,18 @@ const getWorkbook = async (req, res, next) => {
 const updateEmailSettings = async (req, res, next) => {
   try {
     const { lecturerEmail, staffEmail } = req.body;
-    const update = { staffEmail };
+    const update = staffEmail ? { staffEmail: sanitize(staffEmail, 100) } : {};
 
     // If lecturer provided email + app password, encrypt and store in User model
     if (lecturerEmail && req.body.appPassword) {
+      const email = sanitize(lecturerEmail, 100);
+      const appPassword = req.body.appPassword.trim();
+      if (appPassword.length < 8) {
+        return res.status(400).json({ success: false, message: 'App password must be at least 8 characters.' });
+      }
       await User.findByIdAndUpdate(req.user._id, {
-        email: lecturerEmail,
-        emailAppPassword: encrypt(req.body.appPassword),
+        email,
+        emailAppPassword: encrypt(appPassword),
       });
     }
 
@@ -87,6 +102,15 @@ const addSheet = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Batch, branch, and subject are required.' });
     }
 
+    // Sanitize inputs
+    const cleanBatch = sanitize(batch, 50);
+    const cleanBranch = sanitize(branch, 50);
+    const cleanSubject = sanitize(subject, 100);
+
+    if (!cleanBatch || !cleanBranch || !cleanSubject) {
+      return res.status(400).json({ success: false, message: 'Invalid batch, branch, or subject.' });
+    }
+
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
     if (!workbook) {
       return res.status(404).json({ success: false, message: 'Workbook not found.' });
@@ -94,14 +118,14 @@ const addSheet = async (req, res, next) => {
 
     // Check for duplicate
     const exists = workbook.sheets.find(
-      (s) => s.batch === batch && s.branch === branch && s.subject === subject
+      (s) => s.batch === cleanBatch && s.branch === cleanBranch && s.subject === cleanSubject
     );
     if (exists) {
       return res.status(400).json({ success: false, message: 'This sheet already exists.' });
     }
 
     workbook.sheets.push({
-      name: `${batch} / ${branch} / ${subject}`,
+      name: `${cleanBatch} / ${cleanBranch} / ${cleanSubject}`,
       batch,
       branch,
       subject,
@@ -143,9 +167,14 @@ const addTest = async (req, res, next) => {
     const sheet = workbook.sheets[sheetIndex];
     if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
 
+    const cleanName = sanitize(testName, 100);
+    if (!cleanName) {
+      return res.status(400).json({ success: false, message: 'Test name is required.' });
+    }
+    let maxMarks = req.body.maxMarks ? parseInt(req.body.maxMarks) : 100;
+    if (isNaN(maxMarks) || maxMarks < 1 || maxMarks > 1000) maxMarks = 100;
     const colIndex = sheet.tests.length + 1;
-    const maxMarks = req.body.maxMarks ? parseInt(req.body.maxMarks) : 100;
-    sheet.tests.push({ name: testName, colIndex, maxMarks, approved: false, approvedAt: null });
+    sheet.tests.push({ name: cleanName, colIndex, maxMarks, approved: false, approvedAt: null });
     // Add mark entry for this test to all existing students
     for (const student of sheet.students) {
       student.marks.push({ colIndex, value: '' });
@@ -196,8 +225,13 @@ const addStudent = async (req, res, next) => {
     const sheet = workbook.sheets[sheetIndex];
     if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
 
+    const cleanName = sanitize(name, 100);
+    if (!cleanName) {
+      return res.status(400).json({ success: false, message: 'Student name is required.' });
+    }
+
     const marks = sheet.tests.map((t, i) => ({ colIndex: i + 1, value: '' }));
-    sheet.students.push({ name, marks });
+    sheet.students.push({ name: cleanName, marks });
     await workbook.save();
     res.json({ success: true, data: workbook });
   } catch (error) {
@@ -232,9 +266,11 @@ const updateMark = async (req, res, next) => {
     if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
 
     const sheet = workbook.sheets[sheetIndex];
+    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
     const student = sheet.students[studentIndex];
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found.' });
     const mark = student.marks.find((m) => m.colIndex === parseInt(colIndex));
-    if (mark) mark.value = value;
+    if (mark) mark.value = sanitize(value, 20);
 
     await workbook.save();
     res.json({ success: true, data: workbook });
