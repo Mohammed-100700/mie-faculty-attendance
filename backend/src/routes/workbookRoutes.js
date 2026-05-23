@@ -19,5 +19,6 @@ router.put('/sheets/:sheetIndex/students/:studentIndex/marks/:colIndex', protect
 router.put('/sheets/:sheetIndex/tests/:testIndex/toggle', protect, toggleTestApproval);
 router.post('/sheets/:sheetIndex/send', protect, sendEmail);
 router.post('/sync-marks', protect, syncMarks);
+router.post('/test-email', protect, testEmail);
 
 module.exports = router;

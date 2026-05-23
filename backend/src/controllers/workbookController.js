@@ -379,6 +379,16 @@ const sendEmail = async (req, res, next) => {
     const appPassword = decrypt(lecturer.emailAppPassword);
     const userTransporter = createTransporter(lecturer.email, appPassword);
 
+    // Verify connection first
+    try {
+      await userTransporter.verify();
+    } catch (verifyErr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Gmail authentication failed. Please check your email and App Password in Settings. Make sure you are using a Gmail App Password (not your regular password) and have 2-Step Verification enabled.',
+      });
+    }
+
     await userTransporter.sendMail({
       from: `"${lecturerName}" <${lecturer.email}>`,
       to: workbook.staffEmail,
@@ -397,6 +407,49 @@ const sendEmail = async (req, res, next) => {
     await workbook.save();
 
     res.json({ success: true, message: `Email sent to ${workbook.staffEmail} with ${approvedTests.length} test column(s).` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Test email configuration
+// @route   POST /api/workbook/test-email
+const testEmail = async (req, res, next) => {
+  try {
+    const lecturer = await User.findById(req.user._id);
+    if (!lecturer.email || !lecturer.emailAppPassword) {
+      return res.status(400).json({ success: false, message: 'Email not configured. Go to Settings and set up your Gmail.' });
+    }
+
+    const appPassword = decrypt(lecturer.emailAppPassword);
+    const userTransporter = createTransporter(lecturer.email, appPassword);
+
+    // Verify connection
+    try {
+      await userTransporter.verify();
+    } catch (verifyErr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Gmail authentication failed. Please check your email and App Password in Settings. Make sure you are using a Gmail App Password (not your regular password) and have 2-Step Verification enabled.',
+      });
+    }
+
+    // Send test email to the lecturer themselves
+    await userTransporter.sendMail({
+      from: `"MIE Faculty System" <${lecturer.email}>`,
+      to: lecturer.email,
+      subject: 'Test Email — MIE Faculty System',
+      html: `<div style="font-family:Arial,sans-serif;padding:20px;">
+        <h2 style="color:#2563eb;">Email Test Successful!</h2>
+        <p>Your email is configured correctly. You can now send marks to staff.</p>
+        <p><strong>Lecturer:</strong> ${lecturer.name}</p>
+        <p><strong>Email:</strong> ${lecturer.email}</p>
+        <hr style="border:1px solid #e2e8f0;"/>
+        <p style="color:#94a3b8;font-size:12px;">MIE Faculty Attendance System</p>
+      </div>`,
+    });
+
+    res.json({ success: true, message: `Test email sent to ${lecturer.email}. Check your inbox!` });
   } catch (error) {
     next(error);
   }
@@ -444,4 +497,5 @@ module.exports = {
   toggleTestApproval,
   sendEmail,
   syncMarks,
+  testEmail,
 };

@@ -6,7 +6,7 @@ import {
 import {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, sendEmail, syncMarks,
+  updateMark, toggleTestApproval, sendEmail, syncMarks, testEmail,
 } from '../api/workbookApi';
 
 const BATCHES = ['September', 'December', 'March'];
@@ -223,6 +223,15 @@ const MarksManagement = () => {
     }
   };
 
+  const handleTestEmail = async () => {
+    try {
+      const res = await testEmail();
+      showToast(res.data.message);
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to send test email', 'error');
+    }
+  };
+
   const handleSaveEmailSettings = async () => {
     if (!lecturerEmail.trim()) {
       showToast('Please enter your Gmail address', 'error');
@@ -311,7 +320,12 @@ const MarksManagement = () => {
                 <input type="email" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} className="input-field" placeholder="staff@mie.com" />
               </div>
               <div className="flex items-end">
-                <button onClick={handleSaveEmailSettings} className="btn-primary w-full">Save Settings</button>
+                <div className="flex gap-2">
+                  <button onClick={handleSaveEmailSettings} className="btn-primary flex-1">Save Settings</button>
+                  <button onClick={handleTestEmail} className="btn-secondary flex items-center gap-1" title="Send a test email to verify your configuration">
+                    <FiMail className="w-4 h-4" /> Test
+                  </button>
+                </div>
               </div>
             </div>
             {workbook.lastEmailSentAt && (
