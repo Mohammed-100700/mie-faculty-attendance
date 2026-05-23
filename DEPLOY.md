@@ -111,4 +111,9 @@
 - **CORS errors:** Make sure `CLIENT_URL` in Render matches your Vercel URL exactly
 - **Login fails:** Check `JWT_SECRET` is set and is a strong random string
 - **Database connection fails:** Make sure MongoDB Atlas allows connections from all IPs (`0.0.0.0/0`)
-- **Email not sending:** Lecturer must configure their Gmail App Password in Settings
+- **Email not sending:**
+  - Lecturer must configure their Gmail App Password in Settings (not their regular password)
+  - Must enable 2-Step Verification on Google Account first
+  - Use the "Test" button in Settings to verify email works before sending marks
+  - Gmail may block sign-ins from unfamiliar servers — the test email will reveal this
+  - If using Render free tier, the first email after sleep may take 30+ seconds
