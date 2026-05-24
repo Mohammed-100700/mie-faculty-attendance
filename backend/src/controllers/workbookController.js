@@ -1,6 +1,6 @@
 const Workbook = require('../models/Workbook');
 const User = require('../models/User');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 const crypto = require('crypto');
 
 // Encrypt/decrypt helpers for storing app passwords
@@ -8,6 +8,11 @@ const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
   console.error('FATAL: EMAIL_ENCRYPTION_KEY must be exactly 32 characters. Set it in .env');
   process.exit(1);
+}
+
+// Set SendGrid API key
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
 // Sanitize helper — strip HTML tags and limit length
@@ -32,16 +37,6 @@ function decrypt(text) {
   let decrypted = decipher.update(encrypted);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
   return decrypted.toString();
-}
-
-// Create transporter per user
-function createTransporter(email, appPassword) {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: { user: email, pass: appPassword },
-  });
 }
 
 // @desc    Get workbook
@@ -320,24 +315,20 @@ const sendEmail = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Staff email not set. Go to Settings.' });
     }
 
-    // Get lecturer's email credentials — fallback to system email
+    // Determine sender — lecturer's own Gmail or system fallback
     const lecturer = await User.findById(req.user._id);
-    let senderEmail, senderPassword, senderName;
+    let senderEmail, senderName;
 
     if (lecturer.email && lecturer.emailAppPassword) {
-      // Use lecturer's own Gmail
       senderEmail = lecturer.email;
-      senderPassword = decrypt(lecturer.emailAppPassword);
       senderName = lecturer.name;
-    } else if (process.env.SYSTEM_EMAIL && process.env.SYSTEM_EMAIL_PASSWORD) {
-      // Fallback to system email
+    } else if (process.env.SYSTEM_EMAIL) {
       senderEmail = process.env.SYSTEM_EMAIL;
-      senderPassword = process.env.SYSTEM_EMAIL_PASSWORD;
       senderName = lecturer.name + ' (via MIE Faculty)';
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Email not configured. Please go to Settings and set up your Gmail, or contact the administrator to configure system email.',
+        message: 'Email not configured. Ask the administrator to set up SendGrid, or configure your Gmail in Settings.',
       });
     }
 
@@ -390,25 +381,28 @@ const sendEmail = async (req, res, next) => {
     html += `<p style="color:#94a3b8;font-size:11px;margin:0;padding:10px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;">MIE Faculty Attendance • ${sheet.students.length} student(s) • ${approvedTests.length} test(s)</p>`;
     html += '</div>';
 
-    // Send email
-    const userTransporter = createTransporter(senderEmail, senderPassword);
-
-    // Verify connection first
-    try {
-      await userTransporter.verify();
-    } catch (verifyErr) {
+    // Send via SendGrid
+    if (!process.env.SENDGRID_API_KEY) {
       return res.status(400).json({
         success: false,
-        message: 'Email authentication failed. Please check your email configuration in Settings or contact the administrator.',
+        message: 'Email service not configured. Please contact the administrator to set up SendGrid.',
       });
     }
 
-    await userTransporter.sendMail({
-      from: `"${senderName}" <${senderEmail}>`,
-      to: workbook.staffEmail,
-      subject,
-      html,
-    });
+    try {
+      await sgMail.send({
+        to: workbook.staffEmail,
+        from: { email: senderEmail, name: senderName },
+        subject,
+        html,
+      });
+    } catch (emailErr) {
+      console.error('SendGrid error:', emailErr.response?.body || emailErr.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to send email. Please check the staff email address and try again. Error: ' + (emailErr.response?.body?.errors?.[0]?.message || emailErr.message),
+      });
+    }
 
     // Reset approvals
     for (const test of sheet.tests) {
@@ -430,34 +424,30 @@ const sendEmail = async (req, res, next) => {
 // @route   POST /api/workbook/test-email
 const testEmail = async (req, res, next) => {
   try {
+    if (!process.env.SENDGRID_API_KEY) {
+      return res.status(400).json({ success: false, message: 'Email service not configured. Please contact the administrator to set up SendGrid.' });
+    }
+
     const lecturer = await User.findById(req.user._id);
-    let senderEmail, senderPassword;
+    let senderEmail = process.env.SYSTEM_EMAIL;
+    let senderName = lecturer.name;
 
     if (lecturer.email && lecturer.emailAppPassword) {
       senderEmail = lecturer.email;
-      senderPassword = decrypt(lecturer.emailAppPassword);
-    } else if (process.env.SYSTEM_EMAIL && process.env.SYSTEM_EMAIL_PASSWORD) {
-      senderEmail = process.env.SYSTEM_EMAIL;
-      senderPassword = process.env.SYSTEM_EMAIL_PASSWORD;
-    } else {
-      return res.status(400).json({ success: false, message: 'Email not configured. Please go to Settings and set up your Gmail, or contact the administrator.' });
     }
 
-    const userTransporter = createTransporter(senderEmail, senderPassword);
-
-    try {
-      await userTransporter.verify();
-    } catch (verifyErr) {
-      return res.status(400).json({ success: false, message: 'Email authentication failed. Please check your configuration.' });
+    if (!senderEmail) {
+      return res.status(400).json({ success: false, message: 'No sender email available.' });
     }
 
-    await userTransporter.sendMail({
-      from: `"MIE Faculty System" <${senderEmail}>`,
+    await sgMail.send({
       to: senderEmail,
+      from: { email: senderEmail, name: 'MIE Faculty System' },
       subject: 'Test Email — MIE Faculty System',
       html: `<div style="font-family:Arial,sans-serif;padding:20px;">
         <h2 style="color:#2563eb;">Email Test Successful!</h2>
         <p>Your email is configured correctly. You can now send marks to staff.</p>
+        <p><strong>Lecturer:</strong> ${lecturer.name}</p>
         <hr style="border:1px solid #e2e8f0;"/>
         <p style="color:#94a3b8;font-size:12px;">MIE Faculty Attendance System</p>
       </div>`,
@@ -465,7 +455,8 @@ const testEmail = async (req, res, next) => {
 
     res.json({ success: true, message: `Test email sent to ${senderEmail}. Check your inbox!` });
   } catch (error) {
-    next(error);
+    console.error('SendGrid test email error:', error.response?.body || error.message);
+    return res.status(400).json({ success: false, message: 'Failed to send test email. Error: ' + (error.response?.body?.errors?.[0]?.message || error.message) });
   }
 };
 
