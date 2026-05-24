@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FiPlus, FiTrash2, FiSend, FiCheckSquare, FiSquare,
-  FiBookOpen, FiUsers, FiSettings, FiX, FiMail, FiCheck,
+  FiBookOpen, FiUsers, FiSettings, FiX, FiMail,
 } from 'react-icons/fi';
 import {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
