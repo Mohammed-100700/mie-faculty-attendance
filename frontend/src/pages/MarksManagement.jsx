@@ -8,10 +8,6 @@ import {
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
-import {
-  setEmailJSConfig, getEmailJSConfig, isEmailJSConfigured,
-  sendMarksEmail, sendTestEmail,
-} from '../utils/emailService';
 
 const BATCHES = ['September', 'December', 'March'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
@@ -22,10 +18,6 @@ const MarksManagement = () => {
   const [activeSheet, setActiveSheet] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [staffEmail, setStaffEmail] = useState('');
-  const [emailjsServiceId, setEmailjsServiceId] = useState('');
-  const [emailjsTemplateId, setEmailjsTemplateId] = useState('');
-  const [emailjsPublicKey, setEmailjsPublicKey] = useState('');
-  const [emailSending, setEmailSending] = useState(false);
 
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
@@ -224,58 +216,49 @@ const MarksManagement = () => {
       showToast('No tests approved. Check the boxes for tests to send.', 'error');
       return;
     }
-    if (!isEmailJSConfigured()) {
-      showToast('Please configure EmailJS first (Step 1 in Settings)', 'error');
-      return;
+    // Build plain text email body
+    let body = `Marks Update - ${sheet.batch} / ${sheet.branch} / ${sheet.subject}\n`;
+    body += '='.repeat(50) + '\n\n';
+
+    for (const test of sheet.tests.filter((t) => t.approved)) {
+      body += `${test.name} (out of ${test.maxMarks || 100})\n`;
+      body += '-'.repeat(30) + '\n';
+      for (const student of sheet.students) {
+        const mark = student.marks.find((m) => m.colIndex === test.colIndex);
+        const markValue = mark && mark.value !== '' ? mark.value : '-';
+        body += `${student.name}: ${markValue}\n`;
+      }
+      body += '\n';
     }
-    if (!window.confirm(`Send email to ${staffEmail} with ${approvedCount} test column(s)?`)) return;
-    setEmailSending(true);
-    try {
-      await sendMarksEmail({ sheet, approvedTests: sheet.tests.filter((t) => t.approved), staffEmail });
-      // Reset approvals in local state
-      setWorkbook((prev) => {
-        const updated = JSON.parse(JSON.stringify(prev));
-        updated.sheets[activeSheet].tests.forEach((t) => { t.approved = false; t.approvedAt = null; });
-        updated.lastEmailSentAt = new Date().toISOString();
-        return updated;
-      });
-      showToast(`Email sent to ${staffEmail} with ${approvedCount} test column(s)!`);
-    } catch (err) {
-      showToast(err.message || 'Failed to send email', 'error');
-    } finally {
-      setEmailSending(false);
-    }
+
+    // Open email client
+    const subject = `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`;
+    const mailto = `mailto:${encodeURIComponent(staffEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+
+    // Reset approvals
+    setWorkbook((prev) => {
+      const updated = JSON.parse(JSON.stringify(prev));
+      updated.sheets[activeSheet].tests.forEach((t) => { t.approved = false; t.approvedAt = null; });
+      updated.lastEmailSentAt = new Date().toISOString();
+      return updated;
+    });
+
+    showToast('Email client opened! Send the email from your inbox.');
   };
 
-  const handleTestEmail = async () => {
-    if (!isEmailJSConfigured()) {
-      showToast('Please configure EmailJS first (Step 1 above)', 'error');
-      return;
-    }
-    setEmailSending(true);
-    try {
-      await sendTestEmail();
-      showToast('Test email sent! Check your inbox.');
-    } catch (err) {
-      showToast(err.message || 'Failed to send test email', 'error');
-    } finally {
-      setEmailSending(false);
-    }
-  };
 
   const handleSaveEmailSettings = async () => {
-    setEmailSaving(true);
+    if (!staffEmail.trim()) {
+      showToast('Please enter staff email', 'error');
+      return;
+    }
     try {
-      // Save EmailJS config to localStorage
-      setEmailJSConfig({ serviceId: emailjsServiceId, templateId: emailjsTemplateId, publicKey: emailjsPublicKey });
-      // Save staff email to workbook
       const res = await updateEmailSettings('', staffEmail.trim(), '');
       setWorkbook(res.data.data);
-      showToast('Email settings saved!');
+      showToast('Staff email saved!');
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save settings', 'error');
-    } finally {
-      setEmailSaving(false);
+      showToast(err.response?.data?.message || 'Failed to save', 'error');
     }
   };
 
@@ -328,68 +311,27 @@ const MarksManagement = () => {
         <div className="card border border-gray-200">
           <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><FiMail className="w-4 h-4" /> Email Settings</h3>
           <div className="space-y-4">
-            {/* Step 1: EmailJS Config */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2"><FiMail className="w-4 h-4" /> Step 1: EmailJS Setup (Required)</h4>
-              <p className="text-xs text-blue-600 mb-3">Create a free account at <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" className="underline font-medium">emailjs.com</a> and connect your Gmail. Then copy these 3 values:</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Service ID</label>
-                  <input type="text" value={emailjsServiceId} onChange={(e) => setEmailjsServiceId(e.target.value)} className="input-field text-sm" placeholder="service_xxxxxx" />
-                </div>
-                <div>
-                  <label className="label">Template ID</label>
-                  <input type="text" value={emailjsTemplateId} onChange={(e) => setEmailjsTemplateId(e.target.value)} className="input-field text-sm" placeholder="template_xxxxxx" />
-                </div>
-                <div>
-                  <label className="label">Public Key</label>
-                  <input type="text" value={emailjsPublicKey} onChange={(e) => setEmailjsPublicKey(e.target.value)} className="input-field text-sm" placeholder="xxxxxxxxxxxxxxxx" />
-                </div>
-              </div>
+              <h4 className="font-medium text-blue-800 mb-2">How to send marks via email</h4>
+              <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
+                <li>Enter the staff email below and click Save</li>
+                <li>Go to your sheet, check the tests you want to send</li>
+                <li>Click <strong>"Send Email"</strong> — this opens your email client</li>
+                <li>The marks are pre-filled in the email body</li>
+                <li>Review and send from your inbox</li>
+              </ol>
             </div>
 
-            {/* Step 2: Staff Email */}
             <div>
-              <label className="label">Staff Email (who receives marks)</label>
+              <label className="label">Staff Email (recipient)</label>
               <input type="email" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} className="input-field" placeholder="staff@mie.com" />
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button onClick={handleSaveEmailSettings} className="btn-primary flex-1" disabled={emailSaving}>
-                {emailSaving ? 'Saving...' : 'Save Settings'}
-              </button>
-              <button
-                onClick={handleTestEmail}
-                className="btn-secondary flex items-center gap-1"
-                disabled={emailSending || !isEmailJSConfigured()}
-                title={!isEmailJSConfigured() ? 'Configure EmailJS first' : 'Send a test email'}
-              >
-                <FiMail className="w-4 h-4" /> {emailSending ? 'Sending...' : 'Test'}
-              </button>
-            </div>
-
-            {isEmailJSConfigured() && (
-              <div className="flex items-center gap-2 text-green-600 text-sm">
-                <FiCheck className="w-4 h-4" /> EmailJS configured
-              </div>
-            )}
+            <button onClick={handleSaveEmailSettings} className="btn-primary w-full">Save Staff Email</button>
 
             {workbook.lastEmailSentAt && (
-              <p className="text-xs text-gray-400">Last email sent: {new Date(workbook.lastEmailSentAt).toLocaleString()}</p>
+              <p className="text-xs text-gray-400">Last sent: {new Date(workbook.lastEmailSentAt).toLocaleString()}</p>
             )}
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-700">
-              <strong>EmailJS Setup Guide:</strong>
-              <ol className="list-decimal list-inside mt-1 space-y-0.5">
-                <li>Go to <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer" className="underline">emailjs.com</a> and sign up free</li>
-                <li>Add <strong>Gmail</strong> as email service → connect your Gmail account</li>
-                <li>Create an <strong>Email Template</strong> with variables: <code className="bg-yellow-100 px-1 rounded">{'{{subject}}'}</code>, <code className="bg-yellow-100 px-1 rounded">{'{{html_content}}'}</code></li>
-                <li>Copy <strong>Service ID</strong>, <strong>Template ID</strong>, and <strong>Public Key</strong></li>
-                <li>Paste them above and click Save</li>
-                <li>Click <strong>Test</strong> to verify it works!</li>
-              </ol>
-            </div>
           </div>
         </div>
       )}
