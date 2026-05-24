@@ -14,9 +14,9 @@ import {
 // Set them once here and all lecturers can send email automatically
 // Get them from: https://www.emailjs.com/ → Create account → Add Gmail service → Create template
 // Free tier: 200 emails/month
-const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';     // e.g., 'service_abc123'
-const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';   // e.g., 'template_xyz789'
-const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';     // e.g., 'abcdefghijklmnop'
+const EMAILJS_SERVICE_ID = 'service_v5tjnab';     // e.g., 'service_abc123'
+const EMAILJS_TEMPLATE_ID = 'template_q9hgseo';   // e.g., 'template_xyz789'
+const EMAILJS_PUBLIC_KEY = 'f2ACfOq_9tPcsrAtk';     // e.g., 'abcdefghijklmnop'
 
 const BATCHES = ['September', 'December', 'March'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
@@ -219,41 +219,79 @@ const MarksManagement = () => {
 
   const handleSendEmail = async () => {
     const sheet = workbook.sheets[activeSheet];
-    const approvedCount = sheet.tests.filter((t) => t.approved).length;
-    if (approvedCount === 0) {
+    const approvedTests = sheet.tests.filter((t) => t.approved);
+    if (approvedTests.length === 0) {
       showToast('No tests approved. Check the boxes for tests to send.', 'error');
       return;
     }
-    // Send email automatically via EmailJS
-    if (!EMAILJS_SERVICE_ID || EMAILJS_SERVICE_ID === 'YOUR_SERVICE_ID') {
-      showToast('Email not configured. Please contact the administrator to set up EmailJS.', 'error');
+    if (!staffEmail.trim()) {
+      showToast('Please enter staff email in Settings first.', 'error');
       return;
     }
 
-    // Build plain text email body (EmailJS templates use plain text)
-    let body = `Marks Update\n`;
-    body += `${sheet.batch} / ${sheet.branch} / ${sheet.subject}\n`;
-    body += `Date: ${new Date().toLocaleDateString()}\n`;
-    body += '='.repeat(50) + '\n\n';
+    // Build beautiful HTML email
+    let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:650px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">`;
 
-    for (const test of sheet.tests.filter((t) => t.approved)) {
-      body += `${test.name} (out of ${test.maxMarks || 100})\n`;
-      body += '-'.repeat(30) + '\n';
-      for (const student of sheet.students) {
+    // Header
+    html += `<div style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;padding:24px 28px;">`;
+    html += `<h1 style="margin:0;font-size:22px;letter-spacing:-0.5px;">📊 Marks Update</h1>`;
+    html += `<p style="margin:6px 0 0;opacity:0.9;font-size:14px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`;
+    html += `</div>`;
+
+    // Info badges
+    html += `<div style="padding:16px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;">`;
+    html += `<span style="display:inline-block;background:#2563eb;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.batch}</span>`;
+    html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.branch}</span>`;
+    html += `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.subject}</span>`;
+    html += `<span style="display:inline-block;background:#f1f5f9;color:#475569;padding:4px 12px;border-radius:20px;font-size:12px;">${approvedTests.length} test(s)</span>`;
+    html += `</div>`;
+
+    html += `<div style="padding:20px 24px;">`;
+
+    // Each test as a section
+    for (let t = 0; t < approvedTests.length; t++) {
+      const test = approvedTests[t];
+      const maxMarks = test.maxMarks || 100;
+
+      html += `<div style="margin-top:${t > 0 ? '24' : '0'}px;">`;
+      html += `<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:0;">`;
+      html += `<h2 style="margin:0;font-size:16px;color:#1e40af;">${test.name}</h2>`;
+      html += `<span style="color:#64748b;font-size:13px;">Out of ${maxMarks} marks</span>`;
+      html += `</div>`;
+
+      // Table
+      html += `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;">`;
+      html += `<thead><tr style="background:#f1f5f9;">`;
+      html += `<th style="padding:10px 16px;text-align:left;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Student</th>`;
+      html += `<th style="padding:10px 16px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:100px;">Mark</th>`;
+      html += `</tr></thead><tbody>`;
+
+      for (let r = 0; r < sheet.students.length; r++) {
+        const student = sheet.students[r];
         const mark = student.marks.find((m) => m.colIndex === test.colIndex);
-        const markValue = mark && mark.value !== '' ? mark.value : '-';
-        body += `${student.name}: ${markValue}\n`;
+        const markValue = mark && mark.value !== '' ? mark.value : '—';
+        const bg = r % 2 === 0 ? '#ffffff' : '#f8fafc';
+        html += `<tr style="background:${bg};">`;
+        html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;font-weight:500;color:#1e293b;">${student.name}</td>`;
+        html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb;font-size:15px;">${markValue}</td>`;
+        html += `</tr>`;
       }
-      body += '\n';
+
+      html += `</tbody></table></div>`;
     }
 
-    body += `---\nMIE Faculty Attendance System`;
+    html += `</div>`;
+
+    // Footer
+    html += `<div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">`;
+    html += `<p style="margin:0;color:#94a3b8;font-size:11px;">MIE Faculty Attendance System • ${sheet.students.length} student(s) • ${approvedTests.length} test(s)</p>`;
+    html += `</div></div>`;
 
     try {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         to_email: staffEmail,
         subject: `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`,
-        message: body,
+        html_content: html,
         batch: sheet.batch,
         branch: sheet.branch,
         subject_name: sheet.subject,
