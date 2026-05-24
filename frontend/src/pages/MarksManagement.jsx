@@ -231,58 +231,46 @@ const MarksManagement = () => {
       return;
     }
 
-    // Build beautiful HTML email
-    let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:650px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">`;
+    // Build beautiful HTML email — single table with all tests as columns
+    let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:700px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">`;
 
     // Header
     html += `<div style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;padding:24px 28px;">`;
     html += `<h1 style="margin:0;font-size:22px;letter-spacing:-0.5px;">📊 Marks Update</h1>`;
-    html += `<p style="margin:6px 0 0;opacity:0.9;font-size:14px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`;
+    html += `<p style="margin:6px 0 0;opacity:0.9;font-size:14px;">${sheet.batch} • ${sheet.branch} • ${sheet.subject}</p>`;
+    html += `<p style="margin:4px 0 0;opacity:0.7;font-size:12px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`;
     html += `</div>`;
 
-    // Info badges
-    html += `<div style="padding:16px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;flex-wrap:wrap;">`;
-    html += `<span style="display:inline-block;background:#2563eb;color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.batch}</span>`;
-    html += `<span style="display:inline-block;background:#dbeafe;color:#1e40af;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.branch}</span>`;
-    html += `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${sheet.subject}</span>`;
-    html += `<span style="display:inline-block;background:#f1f5f9;color:#475569;padding:4px 12px;border-radius:20px;font-size:12px;">${approvedTests.length} test(s)</span>`;
-    html += `</div>`;
+    // Single table with all tests as columns
+    html += `<div style="padding:20px 24px;overflow-x:auto;">`;
+    html += `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">`;
 
-    html += `<div style="padding:20px 24px;">`;
+    // Header row — Student + each test name with max marks
+    html += `<thead><tr style="background:#f1f5f9;">`;
+    html += `<th style="padding:12px 16px;text-align:left;border:1px solid #e2e8f0;font-size:13px;color:#475569;font-weight:700;min-width:140px;">Student</th>`;
+    for (const test of approvedTests) {
+      html += `<th style="padding:12px 10px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#1e40af;font-weight:700;min-width:90px;">`;
+      html += `<div>${test.name}</div>`;
+      html += `<div style="font-size:10px;color:#64748b;font-weight:400;margin-top:2px;">out of ${test.maxMarks || 100}</div>`;
+      html += `</th>`;
+    }
+    html += `</tr></thead><tbody>`;
 
-    // Each test as a section
-    for (let t = 0; t < approvedTests.length; t++) {
-      const test = approvedTests[t];
-      const maxMarks = test.maxMarks || 100;
-
-      html += `<div style="margin-top:${t > 0 ? '24' : '0'}px;">`;
-      html += `<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:0;">`;
-      html += `<h2 style="margin:0;font-size:16px;color:#1e40af;">${test.name}</h2>`;
-      html += `<span style="color:#64748b;font-size:13px;">Out of ${maxMarks} marks</span>`;
-      html += `</div>`;
-
-      // Table
-      html += `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;">`;
-      html += `<thead><tr style="background:#f1f5f9;">`;
-      html += `<th style="padding:10px 16px;text-align:left;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Student</th>`;
-      html += `<th style="padding:10px 16px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:100px;">Mark</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (let r = 0; r < sheet.students.length; r++) {
-        const student = sheet.students[r];
+    // Data rows — one per student
+    for (let r = 0; r < sheet.students.length; r++) {
+      const student = sheet.students[r];
+      const bg = r % 2 === 0 ? '#ffffff' : '#f8fafc';
+      html += `<tr style="background:${bg};">`;
+      html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;">${student.name}</td>`;
+      for (const test of approvedTests) {
         const mark = student.marks.find((m) => m.colIndex === test.colIndex);
         const markValue = mark && mark.value !== '' ? mark.value : '—';
-        const bg = r % 2 === 0 ? '#ffffff' : '#f8fafc';
-        html += `<tr style="background:${bg};">`;
-        html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;font-weight:500;color:#1e293b;">${student.name}</td>`;
-        html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb;font-size:15px;">${markValue}</td>`;
-        html += `</tr>`;
+        html += `<td style="padding:10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb;font-size:15px;">${markValue}</td>`;
       }
-
-      html += `</tbody></table></div>`;
+      html += `</tr>`;
     }
 
-    html += `</div>`;
+    html += `</tbody></table></div>`;
 
     // Footer
     html += `<div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">`;
@@ -296,12 +284,6 @@ const MarksManagement = () => {
         to_email: staffEmail,
         subject: `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`,
         html_content: html,
-        message: html,  // fallback for templates using {{message}}
-        batch: sheet.batch,
-        branch: sheet.branch,
-        subject_name: sheet.subject,
-        student_count: String(sheet.students.length),
-        test_count: String(approvedTests.length),
       }, EMAILJS_PUBLIC_KEY);
 
       // Reset approvals
