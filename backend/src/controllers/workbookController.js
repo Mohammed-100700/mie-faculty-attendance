@@ -320,10 +320,25 @@ const sendEmail = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Staff email not set. Go to Settings.' });
     }
 
-    // Get lecturer's email credentials
+    // Get lecturer's email credentials — fallback to system email
     const lecturer = await User.findById(req.user._id);
-    if (!lecturer.email || !lecturer.emailAppPassword) {
-      return res.status(400).json({ success: false, message: 'Email not configured. Go to Settings and set up your Gmail.' });
+    let senderEmail, senderPassword, senderName;
+
+    if (lecturer.email && lecturer.emailAppPassword) {
+      // Use lecturer's own Gmail
+      senderEmail = lecturer.email;
+      senderPassword = decrypt(lecturer.emailAppPassword);
+      senderName = lecturer.name;
+    } else if (process.env.SYSTEM_EMAIL && process.env.SYSTEM_EMAIL_PASSWORD) {
+      // Fallback to system email
+      senderEmail = process.env.SYSTEM_EMAIL;
+      senderPassword = process.env.SYSTEM_EMAIL_PASSWORD;
+      senderName = lecturer.name + ' (via MIE Faculty)';
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Email not configured. Please go to Settings and set up your Gmail, or contact the administrator to configure system email.',
+      });
     }
 
     const lecturerName = req.user.name;
@@ -375,9 +390,8 @@ const sendEmail = async (req, res, next) => {
     html += `<p style="color:#94a3b8;font-size:11px;margin:0;padding:10px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;">MIE Faculty Attendance • ${sheet.students.length} student(s) • ${approvedTests.length} test(s)</p>`;
     html += '</div>';
 
-    // Send using lecturer's own Gmail
-    const appPassword = decrypt(lecturer.emailAppPassword);
-    const userTransporter = createTransporter(lecturer.email, appPassword);
+    // Send email
+    const userTransporter = createTransporter(senderEmail, senderPassword);
 
     // Verify connection first
     try {
@@ -385,12 +399,12 @@ const sendEmail = async (req, res, next) => {
     } catch (verifyErr) {
       return res.status(400).json({
         success: false,
-        message: 'Gmail authentication failed. Please check your email and App Password in Settings. Make sure you are using a Gmail App Password (not your regular password) and have 2-Step Verification enabled.',
+        message: 'Email authentication failed. Please check your email configuration in Settings or contact the administrator.',
       });
     }
 
     await userTransporter.sendMail({
-      from: `"${lecturerName}" <${lecturer.email}>`,
+      from: `"${senderName}" <${senderEmail}>`,
       to: workbook.staffEmail,
       subject,
       html,
@@ -417,39 +431,39 @@ const sendEmail = async (req, res, next) => {
 const testEmail = async (req, res, next) => {
   try {
     const lecturer = await User.findById(req.user._id);
-    if (!lecturer.email || !lecturer.emailAppPassword) {
-      return res.status(400).json({ success: false, message: 'Email not configured. Go to Settings and set up your Gmail.' });
+    let senderEmail, senderPassword;
+
+    if (lecturer.email && lecturer.emailAppPassword) {
+      senderEmail = lecturer.email;
+      senderPassword = decrypt(lecturer.emailAppPassword);
+    } else if (process.env.SYSTEM_EMAIL && process.env.SYSTEM_EMAIL_PASSWORD) {
+      senderEmail = process.env.SYSTEM_EMAIL;
+      senderPassword = process.env.SYSTEM_EMAIL_PASSWORD;
+    } else {
+      return res.status(400).json({ success: false, message: 'Email not configured. Please go to Settings and set up your Gmail, or contact the administrator.' });
     }
 
-    const appPassword = decrypt(lecturer.emailAppPassword);
-    const userTransporter = createTransporter(lecturer.email, appPassword);
+    const userTransporter = createTransporter(senderEmail, senderPassword);
 
-    // Verify connection
     try {
       await userTransporter.verify();
     } catch (verifyErr) {
-      return res.status(400).json({
-        success: false,
-        message: 'Gmail authentication failed. Please check your email and App Password in Settings. Make sure you are using a Gmail App Password (not your regular password) and have 2-Step Verification enabled.',
-      });
+      return res.status(400).json({ success: false, message: 'Email authentication failed. Please check your configuration.' });
     }
 
-    // Send test email to the lecturer themselves
     await userTransporter.sendMail({
-      from: `"MIE Faculty System" <${lecturer.email}>`,
-      to: lecturer.email,
+      from: `"MIE Faculty System" <${senderEmail}>`,
+      to: senderEmail,
       subject: 'Test Email — MIE Faculty System',
       html: `<div style="font-family:Arial,sans-serif;padding:20px;">
         <h2 style="color:#2563eb;">Email Test Successful!</h2>
         <p>Your email is configured correctly. You can now send marks to staff.</p>
-        <p><strong>Lecturer:</strong> ${lecturer.name}</p>
-        <p><strong>Email:</strong> ${lecturer.email}</p>
         <hr style="border:1px solid #e2e8f0;"/>
         <p style="color:#94a3b8;font-size:12px;">MIE Faculty Attendance System</p>
       </div>`,
     });
 
-    res.json({ success: true, message: `Test email sent to ${lecturer.email}. Check your inbox!` });
+    res.json({ success: true, message: `Test email sent to ${senderEmail}. Check your inbox!` });
   } catch (error) {
     next(error);
   }
