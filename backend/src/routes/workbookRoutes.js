@@ -4,7 +4,7 @@ const { protect } = require('../middleware/authMiddleware');
 const {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, sendEmail, syncMarks,
+  updateMark, toggleTestApproval, sendEmail, syncMarks, testEmail,
 } = require('../controllers/workbookController');
 
 router.get('/', protect, getWorkbook);
