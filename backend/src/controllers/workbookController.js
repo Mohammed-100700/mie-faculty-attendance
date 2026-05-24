@@ -1,6 +1,5 @@
 const Workbook = require('../models/Workbook');
 const User = require('../models/User');
-const sgMail = require('@sendgrid/mail');
 const crypto = require('crypto');
 
 // Encrypt/decrypt helpers for storing app passwords
@@ -337,7 +336,5 @@ module.exports = {
   deleteStudent,
   updateMark,
   toggleTestApproval,
-  sendEmail,
   syncMarks,
-  testEmail,
 };
