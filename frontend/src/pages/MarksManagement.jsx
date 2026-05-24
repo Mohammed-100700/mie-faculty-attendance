@@ -13,6 +13,8 @@ import {
 // ⚠️ THESE 3 VALUES ARE THE ONLY CONFIGURATION NEEDED
 // Set them once here and all lecturers can send email automatically
 // Get them from: https://www.emailjs.com/ → Create account → Add Gmail service → Create template
+// ⚠️ IMPORTANT: In your EmailJS template, use {{{html_content}}} (triple braces) to render HTML properly!
+// Template body should be: Subject: {{subject}} <br><br> {{{html_content}}}
 // Free tier: 200 emails/month
 const EMAILJS_SERVICE_ID = 'service_v5tjnab';     // e.g., 'service_abc123'
 const EMAILJS_TEMPLATE_ID = 'template_q9hgseo';   // e.g., 'template_xyz789'
@@ -288,13 +290,18 @@ const MarksManagement = () => {
     html += `</div></div>`;
 
     try {
+      // Send HTML email via EmailJS
+      // Note: In your EmailJS template, use {{{html_content}}} (triple braces) to render HTML
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         to_email: staffEmail,
         subject: `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`,
         html_content: html,
+        message: html,  // fallback for templates using {{message}}
         batch: sheet.batch,
         branch: sheet.branch,
         subject_name: sheet.subject,
+        student_count: String(sheet.students.length),
+        test_count: String(approvedTests.length),
       }, EMAILJS_PUBLIC_KEY);
 
       // Reset approvals
