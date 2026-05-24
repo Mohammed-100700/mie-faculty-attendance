@@ -3,11 +3,20 @@ import {
   FiPlus, FiTrash2, FiSend, FiCheckSquare, FiSquare,
   FiBookOpen, FiUsers, FiSettings, FiX, FiMail,
 } from 'react-icons/fi';
+import emailjs from '@emailjs/browser';
 import {
   getWorkbook, updateEmailSettings, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
+
+// ⚠️ THESE 3 VALUES ARE THE ONLY CONFIGURATION NEEDED
+// Set them once here and all lecturers can send email automatically
+// Get them from: https://www.emailjs.com/ → Create account → Add Gmail service → Create template
+// Free tier: 200 emails/month
+const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';     // e.g., 'service_abc123'
+const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';   // e.g., 'template_xyz789'
+const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';     // e.g., 'abcdefghijklmnop'
 
 const BATCHES = ['September', 'December', 'March'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
@@ -47,11 +56,6 @@ const MarksManagement = () => {
       const res = await getWorkbook();
       setWorkbook(res.data.data);
       if (res.data.data) setStaffEmail(res.data.data.staffEmail || '');
-      // Load EmailJS config
-      const cfg = getEmailJSConfig();
-      if (cfg.serviceId) setEmailjsServiceId(cfg.serviceId);
-      if (cfg.templateId) setEmailjsTemplateId(cfg.templateId);
-      if (cfg.publicKey) setEmailjsPublicKey(cfg.publicKey);
     } catch (err) {
       console.error(err);
     } finally {
@@ -60,6 +64,10 @@ const MarksManagement = () => {
   };
 
   useEffect(() => {
+    // Initialize EmailJS
+    if (EMAILJS_PUBLIC_KEY && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY') {
+      emailjs.init(EMAILJS_PUBLIC_KEY);
+    }
     fetchWorkbook();
     // Auto-sync marks on load to fix any missing entries
     syncMarks().then((res) => {
@@ -216,56 +224,54 @@ const MarksManagement = () => {
       showToast('No tests approved. Check the boxes for tests to send.', 'error');
       return;
     }
-    // Build HTML email and open in a new window for copy-paste
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Marks</title></head><body style="font-family:Arial,sans-serif;padding:20px;">`;
-    html += `<div style="max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">`;
-    html += `<div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:20px 24px;">`;
-    html += `<h2 style="margin:0;font-size:18px;">Marks Update</h2>`;
-    html += `<p style="margin:4px 0 0;opacity:0.85;font-size:13px;">${sheet.batch} / ${sheet.branch} / ${sheet.subject} — ${new Date().toLocaleDateString()}</p>`;
-    html += `</div>`;
-    html += `<div style="padding:16px 20px;">`;
-
-    for (const test of sheet.tests.filter((t) => t.approved)) {
-      const maxMarks = test.maxMarks || 100;
-      html += `<h3 style="color:#1e40af;margin-top:20px;">${test.name} <span style="color:#64748b;font-size:14px;font-weight:normal;">(out of ${maxMarks})</span></h3>`;
-      html += `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;">`;
-      html += `<thead><tr style="background:#f1f5f9;">`;
-      html += `<th style="padding:10px;text-align:left;border:1px solid #e2e8f0;">Student</th>`;
-      html += `<th style="padding:10px;text-align:center;border:1px solid #e2e8f0;width:80px;">Mark</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (let r = 0; r < sheet.students.length; r++) {
-        const student = sheet.students[r];
-        const mark = student.marks.find((m) => m.colIndex === test.colIndex);
-        const markValue = mark && mark.value !== '' ? mark.value : '-';
-        const bg = r % 2 === 0 ? '#ffffff' : '#f8fafc';
-        html += `<tr style="background:${bg}">`;
-        html += `<td style="padding:10px;border:1px solid #e2e8f0;">${student.name}</td>`;
-        html += `<td style="padding:10px;border:1px solid #e2e8f0;text-align:center;font-weight:600;color:#2563eb;">${markValue}</td>`;
-        html += `</tr>`;
-      }
-
-      html += `</tbody></table>`;
+    // Send email automatically via EmailJS
+    if (!EMAILJS_SERVICE_ID || EMAILJS_SERVICE_ID === 'YOUR_SERVICE_ID') {
+      showToast('Email not configured. Please contact the administrator to set up EmailJS.', 'error');
+      return;
     }
 
-    html += `</div>`;
-    html += `<p style="color:#94a3b8;font-size:12px;text-align:center;">MIE Faculty Attendance</p>`;
-    html += `</div></body></html>`;
+    // Build plain text email body (EmailJS templates use plain text)
+    let body = `Marks Update\n`;
+    body += `${sheet.batch} / ${sheet.branch} / ${sheet.subject}\n`;
+    body += `Date: ${new Date().toLocaleDateString()}\n`;
+    body += '='.repeat(50) + '\n\n';
 
-    // Open in new window with copy button
-    const printWindow = window.open('', '_blank', 'width=700,height=600');
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Marks — Copy & Send</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#f1f5f9;} .container{max-width:650px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.1);} h1{margin:0 0 8px;font-size:20px;color:#1e293b;} p{color:#64748b;margin:0 0 16px;} .btn{display:inline-block;background:#2563eb;color:#fff;padding:10px 24px;border-radius:6px;border:none;cursor:pointer;font-size:14px;margin-right:8px;} .btn:hover{background:#1d4ed8;} .btn-secondary{background:#e2e8f0;color:#1e293b;} .btn-secondary:hover{background:#cbd5e1;} .preview{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-top:16px;}</style></head><body><div class="container"><h1>📧 Ready to Send</h1><p>Copy the email content below and paste it into your email client (Gmail, Outlook, etc.) to send to <strong>${staffEmail}</strong></p><button class="btn" onclick="document.querySelector('.preview').select();">Select All</button><button class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.querySelector('.preview').innerText);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy Text',2000);">Copy Text</button><div class="preview">${html}</div></div></body></html>`);
-    printWindow.document.close();
+    for (const test of sheet.tests.filter((t) => t.approved)) {
+      body += `${test.name} (out of ${test.maxMarks || 100})\n`;
+      body += '-'.repeat(30) + '\n';
+      for (const student of sheet.students) {
+        const mark = student.marks.find((m) => m.colIndex === test.colIndex);
+        const markValue = mark && mark.value !== '' ? mark.value : '-';
+        body += `${student.name}: ${markValue}\n`;
+      }
+      body += '\n';
+    }
 
-    // Reset approvals
-    setWorkbook((prev) => {
-      const updated = JSON.parse(JSON.stringify(prev));
-      updated.sheets[activeSheet].tests.forEach((t) => { t.approved = false; t.approvedAt = null; });
-      updated.lastEmailSentAt = new Date().toISOString();
-      return updated;
-    });
+    body += `---\nMIE Faculty Attendance System`;
 
-    showToast('Email preview opened! Copy and paste into your email.');
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: staffEmail,
+        subject: `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`,
+        message: body,
+        batch: sheet.batch,
+        branch: sheet.branch,
+        subject_name: sheet.subject,
+      }, EMAILJS_PUBLIC_KEY);
+
+      // Reset approvals
+      setWorkbook((prev) => {
+        const updated = JSON.parse(JSON.stringify(prev));
+        updated.sheets[activeSheet].tests.forEach((t) => { t.approved = false; t.approvedAt = null; });
+        updated.lastEmailSentAt = new Date().toISOString();
+        return updated;
+      });
+
+      showToast(`Email sent successfully to ${staffEmail}!`);
+    } catch (err) {
+      console.error('EmailJS error:', err);
+      showToast('Failed to send email. Please try again.', 'error');
+    }
   };
 
 
