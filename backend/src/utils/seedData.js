@@ -40,9 +40,18 @@ const seedData = async () => {
       phone: '+880 1700-000000',
       role: 'Lecturer',
       branches: ['Dhanmondi', 'Uttara'],
-      ratePerClass: 1500,
     });
     console.log(`Seeded demo lecturer: ${demoLecturer.email}`);
+
+    const demoAM = await User.create({
+      name: 'Academic Manager',
+      email: 'manager@mie.com',
+      password: 'password123',
+      phone: '+880 1700-000001',
+      role: 'Academic Manager',
+      managedBranch: 'Dhanmondi',
+    });
+    console.log(`Seeded demo Academic Manager: ${demoAM.email} (Dhanmondi)`);
 
     const qrTokens = [];
     for (const branch of branches) {
@@ -57,10 +66,15 @@ const seedData = async () => {
     console.log(`Seeded ${seededTokens.length} QR tokens.`);
 
     console.log('\n=== Seeding Complete ===');
-    console.log('Demo Login:');
+    console.log('Demo Lecturer:');
     console.log('  Email: lecturer@mie.com');
     console.log('  Password: password123');
-    console.log('  Rate per class: 1500 BDT');
+    console.log('  Role: Lecturer');
+    console.log('');
+    console.log('Demo Academic Manager:');
+    console.log('  Email: manager@mie.com');
+    console.log('  Password: password123');
+    console.log('  Role: Academic Manager (Dhanmondi)');
 
     await mongoose.connection.close();
     process.exit(0);

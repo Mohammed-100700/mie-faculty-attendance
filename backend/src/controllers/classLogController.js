@@ -1,5 +1,4 @@
 const ClassLog = require('../models/ClassLog');
-const User = require('../models/User');
 
 // @desc    Create a new class log
 // @route   POST /api/class-logs
@@ -7,22 +6,13 @@ const createClassLog = async (req, res, next) => {
   try {
     const { date, entries, remarks } = req.body;
 
-    const lecturer = await User.findById(req.user._id);
-    if (!lecturer) {
-      return res.status(404).json({ success: false, message: 'Lecturer not found.' });
-    }
-
-    const ratePerClass = lecturer.ratePerClass;
     const totalClasses = entries.reduce((sum, e) => sum + parseInt(e.classes), 0);
-    const payableAmount = totalClasses * ratePerClass;
 
     const classLog = await ClassLog.create({
       lecturerId: req.user._id,
       date: new Date(date),
       entries,
       totalClasses,
-      ratePerClassAtSubmission: ratePerClass,
-      payableAmount,
       remarks: remarks || '',
     });
 
@@ -51,7 +41,10 @@ const getMyClassLogs = async (req, res, next) => {
 
     if (branch) filter['entries.branch'] = branch;
 
-    const logs = await ClassLog.find(filter).sort({ date: -1 });
+    const logs = await ClassLog.find(filter)
+      .populate('entries.approvedBy', 'name')
+      .sort({ date: -1 });
+
     res.json({ success: true, count: logs.length, data: logs });
   } catch (error) {
     next(error);
@@ -65,7 +58,7 @@ const getClassLog = async (req, res, next) => {
     const log = await ClassLog.findOne({
       _id: req.params.id,
       lecturerId: req.user._id,
-    });
+    }).populate('entries.approvedBy', 'name');
 
     if (!log) {
       return res.status(404).json({ success: false, message: 'Class log not found.' });
@@ -91,27 +84,30 @@ const updateClassLog = async (req, res, next) => {
     }
 
     const { date, entries, remarks } = req.body;
-    const ratePerClass = log.ratePerClassAtSubmission;
-    const totalClasses = entries
-      ? entries.reduce((sum, e) => sum + parseInt(e.classes), 0)
-      : log.totalClasses;
-    const payableAmount = totalClasses * ratePerClass;
 
-    const updatedLog = await ClassLog.findByIdAndUpdate(
-      req.params.id,
-      {
-        ...(date && { date: new Date(date) }),
-        ...(entries && { entries, totalClasses }),
-        ...(remarks !== undefined && { remarks }),
-        payableAmount,
-      },
-      { new: true, runValidators: true }
-    );
+    if (date) log.date = new Date(date);
+
+    if (entries) {
+      log.entries = entries;
+      log.totalClasses = entries.reduce((sum, e) => sum + parseInt(e.classes), 0);
+      // Reset ALL entries' approval to Pending — AMs must re-approve
+      log.entries.forEach((e) => {
+        e.approvalStatus = 'Pending';
+        e.approvedBy = null;
+        e.approvedAt = null;
+        e.rejectionReason = '';
+      });
+    }
+
+    if (remarks !== undefined) log.remarks = remarks;
+
+    await log.save();
+    await log.populate('entries.approvedBy', 'name');
 
     res.json({
       success: true,
       message: 'Class log updated successfully.',
-      data: updatedLog,
+      data: log,
     });
   } catch (error) {
     next(error);

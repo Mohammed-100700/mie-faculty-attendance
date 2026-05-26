@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FiUser, FiPhone, FiMail, FiDollarSign, FiMapPin, FiSave } from 'react-icons/fi';
+import { FiUser, FiPhone, FiMapPin, FiSave } from 'react-icons/fi';
 import { updateProfile } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
-import { formatBDT } from '../utils/formatCurrency';
 
 const Profile = () => {
   const { user, updateUser } = useAuth();
@@ -14,7 +13,6 @@ const Profile = () => {
     name: '',
     phone: '',
     branches: [],
-    ratePerClass: 1500,
   });
 
   useEffect(() => {
@@ -23,7 +21,6 @@ const Profile = () => {
         name: user.name || '',
         phone: user.phone || '',
         branches: user.branches || [],
-        ratePerClass: user.ratePerClass || 1500,
       });
     }
   }, [user]);
@@ -73,7 +70,7 @@ const Profile = () => {
           <div>
             <h2 className="text-xl font-bold">{user?.name}</h2>
             <p className="text-primary-100">{user?.email}</p>
-            <p className="text-primary-200 text-sm">Rate: {formatBDT(user?.ratePerClass || 0)}/class</p>
+            <p className="text-primary-200 text-sm">{user?.role}</p>
           </div>
         </div>
       </div>
@@ -101,33 +98,27 @@ const Profile = () => {
             </div>
           </div>
 
-          <div>
-            <label className="label">Rate per Class (BDT)</label>
-            <div className="relative">
-              <FiDollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input type="number" name="ratePerClass" value={form.ratePerClass} onChange={handleChange} className="input-field pl-10" min="0" required />
+          {user?.role === 'Lecturer' && (
+            <div>
+              <label className="label">Branches You Teach At</label>
+              <div className="flex gap-3">
+                {['Dhanmondi', 'Uttara'].map((branch) => (
+                  <label
+                    key={branch}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      form.branches.includes(branch)
+                        ? 'bg-primary-50 border-primary-300 text-primary-700'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
+                    <FiMapPin className="w-4 h-4" />
+                    {branch}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label className="label">Branches You Teach At</label>
-            <div className="flex gap-3">
-              {['Dhanmondi', 'Uttara'].map((branch) => (
-                <label
-                  key={branch}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
-                    form.branches.includes(branch)
-                      ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
-                  <FiMapPin className="w-4 h-4" />
-                  {branch}
-                </label>
-              ))}
-            </div>
-          </div>
+          )}
 
           <button type="submit" className="btn-primary flex items-center gap-2" disabled={loading}>
             {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><FiSave className="w-4 h-4" /> Save Changes</>}

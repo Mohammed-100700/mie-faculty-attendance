@@ -13,9 +13,9 @@ import SubmitClassLog from './pages/SubmitClassLog';
 import QRCheckIn from './pages/QRCheckIn';
 import MyClassLogs from './pages/MyClassLogs';
 import EditClassLog from './pages/EditClassLog';
-import SalaryReport from './pages/SalaryReport';
 import Settings from './pages/Settings';
 import MarksManagement from './pages/MarksManagement';
+import AttendanceApproval from './pages/AttendanceApproval';
 
 function App() {
   return (
@@ -43,8 +43,8 @@ function App() {
             <Route path="qr-checkin" element={<QRCheckIn />} />
             <Route path="my-logs" element={<MyClassLogs />} />
             <Route path="edit-log/:id" element={<EditClassLog />} />
-            <Route path="salary-report" element={<SalaryReport />} />
             <Route path="marks" element={<MarksManagement />} />
+            <Route path="attendance-approval" element={<AttendanceApproval />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 

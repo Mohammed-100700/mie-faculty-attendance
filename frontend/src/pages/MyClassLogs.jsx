@@ -2,20 +2,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { FiFilter, FiList } from 'react-icons/fi';
 import { getMyClassLogs } from '../api/classLogApi';
 import ClassLogTable from '../components/ClassLogTable';
+import ExportButtons from '../components/ExportButtons';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const MyClassLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [filters, setFilters] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     branch: '',
   });
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const params = {};
       if (filters.month) params.month = filters.month;
@@ -24,6 +29,8 @@ const MyClassLogs = () => {
       const res = await getMyClassLogs(params);
       setLogs(res.data.data);
     } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load class logs.';
+      setError(msg);
       console.error('Failed to fetch logs:', err);
     } finally {
       setLoading(false);
@@ -88,12 +95,28 @@ const MyClassLogs = () => {
         </div>
       </div>
 
+      {error && (
+        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={fetchLogs} className="text-red-800 underline text-xs font-medium">Retry</button>
+        </div>
+      )}
+
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
             <FiList className="w-5 h-5" />
             Class Logs ({logs.length})
           </h3>
+          {!loading && (
+            <ExportButtons
+              logs={logs}
+              month={filters.month || new Date().getMonth() + 1}
+              year={filters.year || new Date().getFullYear()}
+              variant="lecturer"
+              userName={user?.name}
+            />
+          )}
         </div>
         {loading ? (
           <div className="text-center py-8">

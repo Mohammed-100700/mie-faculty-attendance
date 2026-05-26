@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['Lecturer'],
+      enum: ['Lecturer', 'Academic Manager'],
       default: 'Lecturer',
     },
     branches: [
@@ -37,14 +37,14 @@ const userSchema = new mongoose.Schema(
         enum: ['Dhanmondi', 'Uttara'],
       },
     ],
-    // Email settings for sending marks
-    emailAppPassword: { type: String, default: null }, // encrypted Gmail App Password
-    ratePerClass: {
-      type: Number,
-      required: [true, 'Rate per class is required'],
-      min: [0, 'Rate cannot be negative'],
-      default: 1500,
+    // Branch this Academic Manager oversees (null for Lecturers)
+    managedBranch: {
+      type: String,
+      enum: ['Dhanmondi', 'Uttara', null],
+      default: null,
     },
+    // Email settings for sending marks
+    emailAppPassword: { type: String, default: null },
   },
   {
     timestamps: true,

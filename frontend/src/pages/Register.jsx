@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiMail, FiLock, FiUser, FiPhone, FiDollarSign } from 'react-icons/fi';
+import { FiMail, FiLock, FiUser, FiPhone, FiMapPin } from 'react-icons/fi';
 import { register } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,7 +12,7 @@ const Register = () => {
     confirmPassword: '',
     phone: '',
     branches: [],
-    ratePerClass: 1500,
+    role: 'Lecturer',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,7 +41,7 @@ const Register = () => {
       return;
     }
 
-    if (form.branches.length === 0) {
+    if (form.role === 'Lecturer' && form.branches.length === 0) {
       setError('Please select at least one branch.');
       return;
     }
@@ -77,6 +77,33 @@ const Register = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Role Selection */}
+            <div>
+              <label className="label">Register As</label>
+              <div className="flex gap-3">
+                {['Lecturer', 'Academic Manager'].map((r) => (
+                  <label
+                    key={r}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      form.role === r
+                        ? 'bg-primary-50 border-primary-300 text-primary-700'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      value={r}
+                      checked={form.role === r}
+                      onChange={handleChange}
+                      className="sr-only"
+                    />
+                    {r}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="label">Full Name</label>
               <div className="relative">
@@ -89,7 +116,7 @@ const Register = () => {
               <label className="label">Email</label>
               <div className="relative">
                 <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="email" name="email" value={form.email} onChange={handleChange} className="input-field pl-10" placeholder="lecturer@mie.com" required />
+                <input type="email" name="email" value={form.email} onChange={handleChange} className="input-field pl-10" placeholder="you@mie.com" required />
               </div>
             </div>
 
@@ -118,32 +145,58 @@ const Register = () => {
               </div>
             </div>
 
-            <div>
-              <label className="label">Rate per Class (BDT)</label>
-              <div className="relative">
-                <FiDollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="number" name="ratePerClass" value={form.ratePerClass} onChange={handleChange} className="input-field pl-10" min="0" required />
+            {/* Branch selection for Lecturers */}
+            {form.role === 'Lecturer' && (
+              <div>
+                <label className="label">Branches You Teach At</label>
+                <div className="flex gap-3">
+                  {['Dhanmondi', 'Uttara'].map((branch) => (
+                    <label
+                      key={branch}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
+                        form.branches.includes(branch)
+                          ? 'bg-primary-50 border-primary-300 text-primary-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
+                      <FiMapPin className="w-4 h-4" />
+                      {branch}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div>
-              <label className="label">Branches You Teach At</label>
-              <div className="flex gap-3">
-                {['Dhanmondi', 'Uttara'].map((branch) => (
-                  <label
-                    key={branch}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
-                      form.branches.includes(branch)
-                        ? 'bg-primary-50 border-primary-300 text-primary-700'
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
-                    {branch}
-                  </label>
-                ))}
+            {/* Managed Branch for Academic Managers */}
+            {form.role === 'Academic Manager' && (
+              <div>
+                <label className="label">Branch You Manage</label>
+                <div className="flex gap-3">
+                  {['Dhanmondi', 'Uttara'].map((branch) => (
+                    <label
+                      key={branch}
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        form.managedBranch === branch
+                          ? 'bg-primary-50 border-primary-300 text-primary-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="managedBranch"
+                        value={branch}
+                        checked={form.managedBranch === branch}
+                        onChange={handleChange}
+                        className="sr-only"
+                      />
+                      <FiMapPin className="w-4 h-4" />
+                      {branch}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <button type="submit" className="btn-primary w-full" disabled={loading}>
               {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" /> : 'Create Account'}

@@ -1,8 +1,14 @@
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
-import { formatDate, formatBDT } from '../utils/formatCurrency';
+import { formatDate } from '../utils/formatCurrency';
 import { deleteClassLog } from '../api/classLogApi';
 
-const ClassLogTable = ({ logs, onEdit, onRefresh }) => {
+const statusConfig = {
+  Pending: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Pending' },
+  Approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' },
+  Rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' },
+};
+
+const ClassLogTable = ({ logs, onEdit, onRefresh, showLecturer, managedBranch }) => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this class log?')) {
       try {
@@ -32,17 +38,28 @@ const ClassLogTable = ({ logs, onEdit, onRefresh }) => {
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-3 px-4 font-medium text-gray-500">Date</th>
+            {showLecturer && (
+              <th className="text-left py-3 px-4 font-medium text-gray-500">Lecturer</th>
+            )}
             <th className="text-left py-3 px-4 font-medium text-gray-500">Branches</th>
             <th className="text-center py-3 px-4 font-medium text-gray-500">Total</th>
-            <th className="text-right py-3 px-4 font-medium text-gray-500">Amount</th>
+            <th className="text-center py-3 px-4 font-medium text-gray-500">Status</th>
             <th className="text-left py-3 px-4 font-medium text-gray-500">Remarks</th>
-            <th className="text-center py-3 px-4 font-medium text-gray-500">Actions</th>
+            {onEdit && <th className="text-center py-3 px-4 font-medium text-gray-500">Actions</th>}
           </tr>
         </thead>
         <tbody>
           {logs.map((log) => (
             <tr key={log._id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
               <td className="py-3 px-4">{formatDate(log.date)}</td>
+              {showLecturer && (
+                <td className="py-3 px-4">
+                  <div>
+                    <p className="font-medium text-gray-900">{log.lecturerId?.name || '—'}</p>
+                    <p className="text-xs text-gray-500">{log.lecturerId?.email || ''}</p>
+                  </div>
+                </td>
+              )}
               <td className="py-3 px-4">
                 {log.entries?.map((e) => (
                   <span key={e.branch} className="inline-block mr-2">
@@ -51,18 +68,58 @@ const ClassLogTable = ({ logs, onEdit, onRefresh }) => {
                 ))}
               </td>
               <td className="py-3 px-4 text-center font-medium">{log.totalClasses}</td>
-              <td className="py-3 px-4 text-right font-medium">{formatBDT(log.payableAmount)}</td>
-              <td className="py-3 px-4 text-gray-500">{log.remarks || '—'}</td>
-              <td className="py-3 px-4">
-                <div className="flex items-center justify-center gap-2">
-                  <button onClick={() => onEdit(log)} className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-600 transition-colors" title="Edit">
-                    <FiEdit2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(log._id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 transition-colors" title="Delete">
-                    <FiTrash2 className="w-4 h-4" />
-                  </button>
+              <td className="py-3 px-4 text-center">
+                {/* Per-branch status badges */}
+                <div className="flex flex-wrap gap-1 justify-center">
+                  {log.entries?.map((entry) => {
+                    const st = statusConfig[entry.approvalStatus] || statusConfig.Pending;
+                    // If managedBranch is provided, dim entries not belonging to this AM
+                    const isMine = !managedBranch || entry.branch === managedBranch;
+                    return (
+                      <span
+                        key={entry.branch}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text} ${
+                          !isMine ? 'opacity-40' : ''
+                        }`}
+                        title={
+                          entry.approvalStatus === 'Rejected' && entry.rejectionReason
+                            ? entry.rejectionReason
+                            : entry.approvalStatus === 'Approved'
+                            ? `Approved by ${entry.approvedBy?.name || 'manager'}`
+                            : 'Pending approval'
+                        }
+                      >
+                        {entry.branch}: {st.label}
+                      </span>
+                    );
+                  })}
                 </div>
+                {/* Show rejection reason below if any entry is rejected */}
+                {log.entries?.some((e) => e.approvalStatus === 'Rejected' && e.rejectionReason) && (
+                  <div className="mt-1 text-xs text-red-500">
+                    {log.entries
+                      .filter((e) => e.approvalStatus === 'Rejected' && e.rejectionReason)
+                      .map((e) => (
+                        <span key={e.branch} className="block">
+                          {e.branch}: {e.rejectionReason}
+                        </span>
+                      ))}
+                  </div>
+                )}
               </td>
+              <td className="py-3 px-4 text-gray-500">{log.remarks || '—'}</td>
+              {onEdit && (
+                <td className="py-3 px-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <button onClick={() => onEdit(log)} className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-600 transition-colors" title="Edit">
+                      <FiEdit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(log._id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 transition-colors" title="Delete">
+                      <FiTrash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

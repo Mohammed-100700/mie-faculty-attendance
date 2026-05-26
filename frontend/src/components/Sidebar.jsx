@@ -5,30 +5,36 @@ import {
   FiPlusCircle,
   FiGrid,
   FiList,
-  FiFileText,
   FiSettings,
   FiLogOut,
   FiClipboard,
+  FiCheckCircle,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
-  const { logoutUser } = useAuth();
+  const { user, logoutUser } = useAuth();
 
-  const navItems = [
+  const lecturerNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
     { to: '/profile', icon: FiUser, label: 'Profile' },
     { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance' },
     { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In' },
     { to: '/my-logs', icon: FiList, label: 'My Attendance' },
     { to: '/marks', icon: FiClipboard, label: 'Marks Management' },
-    { to: '/salary-report', icon: FiFileText, label: 'Salary Report' },
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];
 
+  const amNavItems = [
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
+    { to: '/attendance-approval', icon: FiCheckCircle, label: 'Attendance Approval' },
+    { to: '/settings', icon: FiSettings, label: 'Settings' },
+  ];
+
+  const navItems = user?.role === 'Academic Manager' ? amNavItems : lecturerNavItems;
+
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -41,7 +47,6 @@ const Sidebar = ({ isOpen, onClose }) => {
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
@@ -51,12 +56,13 @@ const Sidebar = ({ isOpen, onClose }) => {
               <h1 className="font-bold text-gray-900 text-sm leading-tight">
                 MIE Pathways
               </h1>
-              <p className="text-xs text-gray-500">Faculty Portal</p>
+              <p className="text-xs text-gray-500">
+                {user?.role === 'Academic Manager' ? 'Academic Manager' : 'Faculty Portal'}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="p-4 space-y-1">
           {navItems.map((item) => (
             <NavLink
@@ -73,7 +79,6 @@ const Sidebar = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-        {/* Logout */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100">
           <button
             onClick={logoutUser}

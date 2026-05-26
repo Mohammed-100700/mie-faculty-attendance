@@ -1,27 +1,23 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 
-// @desc    Register a new lecturer
+// @desc    Register a new user (Lecturer or Academic Manager)
 // @route   POST /api/auth/register
 const register = async (req, res, next) => {
   try {
-    const { name, email, password, phone, branches, ratePerClass } = req.body;
+    const { name, email, password, phone, branches, role, managedBranch } = req.body;
 
-    // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
     }
 
-    // Password strength
     if (password.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
-    // Sanitize
     const cleanName = name.trim().substring(0, 100);
     const cleanEmail = email.trim().toLowerCase().substring(0, 100);
 
-    // Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(cleanEmail)) {
       return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
@@ -35,15 +31,20 @@ const register = async (req, res, next) => {
       });
     }
 
-    const user = await User.create({
+    const userData = {
       name: cleanName,
       email: cleanEmail,
       password,
       phone: (phone || '').trim().substring(0, 20),
       branches: branches || [],
-      ratePerClass: ratePerClass || 1500,
-    });
+      role: role || 'Lecturer',
+    };
 
+    if (role === 'Academic Manager' && managedBranch) {
+      userData.managedBranch = managedBranch;
+    }
+
+    const user = await User.create(userData);
     const token = generateToken(user._id);
 
     res.status(201).json({
@@ -56,7 +57,7 @@ const register = async (req, res, next) => {
         phone: user.phone,
         role: user.role,
         branches: user.branches,
-        ratePerClass: user.ratePerClass,
+        managedBranch: user.managedBranch,
         token,
       },
     });
@@ -65,7 +66,7 @@ const register = async (req, res, next) => {
   }
 };
 
-// @desc    Login lecturer
+// @desc    Login user
 // @route   POST /api/auth/login
 const login = async (req, res, next) => {
   try {
@@ -106,7 +107,7 @@ const login = async (req, res, next) => {
         phone: user.phone,
         role: user.role,
         branches: user.branches,
-        ratePerClass: user.ratePerClass,
+        managedBranch: user.managedBranch,
         token,
       },
     });
@@ -129,11 +130,11 @@ const getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Update lecturer profile
+// @desc    Update profile
 // @route   PUT /api/auth/profile
 const updateProfile = async (req, res, next) => {
   try {
-    const allowedFields = ['name', 'phone', 'branches', 'ratePerClass'];
+    const allowedFields = ['name', 'phone', 'branches'];
 
     const updates = {};
     for (const field of allowedFields) {

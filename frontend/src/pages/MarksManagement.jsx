@@ -10,15 +10,14 @@ import {
   updateMark, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
 
-// ⚠️ THESE 3 VALUES ARE THE ONLY CONFIGURATION NEEDED
-// Set them once here and all lecturers can send email automatically
-// Get them from: https://www.emailjs.com/ → Create account → Add Gmail service → Create template
+// EmailJS configuration — set in .env file
+// Sign up at https://www.emailjs.com/ → Create account → Add Email Service → Create template
 // ⚠️ IMPORTANT: In your EmailJS template, use {{{html_content}}} (triple braces) to render HTML properly!
 // Template body should be: Subject: {{subject}} <br><br> {{{html_content}}}
 // Free tier: 200 emails/month
-const EMAILJS_SERVICE_ID = 'service_v5tjnab';     // e.g., 'service_abc123'
-const EMAILJS_TEMPLATE_ID = 'template_q9hgseo';   // e.g., 'template_xyz789'
-const EMAILJS_PUBLIC_KEY = 'f2ACfOq_9tPcsrAtk';     // e.g., 'abcdefghijklmnop'
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
 
 const BATCHES = ['September', 'December', 'March'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
@@ -67,7 +66,7 @@ const MarksManagement = () => {
 
   useEffect(() => {
     // Initialize EmailJS
-    if (EMAILJS_PUBLIC_KEY && EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY') {
+    if (EMAILJS_PUBLIC_KEY) {
       emailjs.init(EMAILJS_PUBLIC_KEY);
     }
     fetchWorkbook();
@@ -228,6 +227,10 @@ const MarksManagement = () => {
     }
     if (!staffEmail.trim()) {
       showToast('Please enter staff email in Settings first.', 'error');
+      return;
+    }
+    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      showToast('EmailJS is not configured. Please set VITE_EMAILJS_* in your .env file.', 'error');
       return;
     }
 
