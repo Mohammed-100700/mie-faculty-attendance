@@ -9,6 +9,8 @@ import {
   FiLogOut,
   FiClipboard,
   FiCheckCircle,
+  FiPlay,
+  FiBarChart2,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,11 +19,12 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const lecturerNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { to: '/profile', icon: FiUser, label: 'Profile' },
+    { to: '/start-session', icon: FiPlay, label: 'Start Session' },
     { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance' },
     { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In' },
     { to: '/my-logs', icon: FiList, label: 'My Attendance' },
     { to: '/marks', icon: FiClipboard, label: 'Marks Management' },
+    { to: '/profile', icon: FiUser, label: 'Profile' },
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];
 
@@ -31,7 +34,21 @@ const Sidebar = ({ isOpen, onClose }) => {
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];
 
-  const navItems = user?.role === 'Academic Manager' ? amNavItems : lecturerNavItems;
+  const executiveNavItems = [
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
+    { to: '/executive-dashboard', icon: FiBarChart2, label: 'Attendance Reports' },
+    { to: '/settings', icon: FiSettings, label: 'Settings' },
+  ];
+
+  let navItems = lecturerNavItems;
+  let portalLabel = 'Faculty Portal';
+  if (user?.role === 'Academic Manager') {
+    navItems = amNavItems;
+    portalLabel = 'Academic Manager';
+  } else if (user?.role === 'Executive Office') {
+    navItems = executiveNavItems;
+    portalLabel = 'Executive Office';
+  }
 
   return (
     <>
@@ -56,9 +73,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <h1 className="font-bold text-gray-900 text-sm leading-tight">
                 MIE Pathways
               </h1>
-              <p className="text-xs text-gray-500">
-                {user?.role === 'Academic Manager' ? 'Academic Manager' : 'Faculty Portal'}
-              </p>
+              <p className="text-xs text-gray-500">{portalLabel}</p>
             </div>
           </div>
         </div>

@@ -80,11 +80,11 @@ const Register = () => {
             {/* Role Selection */}
             <div>
               <label className="label">Register As</label>
-              <div className="flex gap-3">
-                {['Lecturer', 'Academic Manager'].map((r) => (
+              <div className="flex gap-2 flex-wrap">
+                {['Lecturer', 'Academic Manager', 'Executive Office'].map((r) => (
                   <label
                     key={r}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
                       form.role === r
                         ? 'bg-primary-50 border-primary-300 text-primary-700'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
@@ -98,7 +98,7 @@ const Register = () => {
                       onChange={handleChange}
                       className="sr-only"
                     />
-                    {r}
+                    <span className="text-sm">{r}</span>
                   </label>
                 ))}
               </div>

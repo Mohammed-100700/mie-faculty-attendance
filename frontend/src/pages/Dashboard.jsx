@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FiBook, FiClock, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiBook, FiClock, FiCheckCircle, FiXCircle, FiBarChart2 } from 'react-icons/fi';
 import { getMyClassLogs } from '../api/classLogApi';
 import { getPendingLogs, getAllLogs } from '../api/attendanceApprovalApi';
+import { getReports } from '../api/attendanceSessionApi';
 import { useAuth } from '../context/AuthContext';
 import ClassLogTable from '../components/ClassLogTable';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const isAM = user?.role === 'Academic Manager';
+  const isExec = user?.role === 'Executive Office';
 
   // Lecturer state
   const [recentLogs, setRecentLogs] = useState([]);
@@ -16,6 +18,9 @@ const Dashboard = () => {
   // AM state
   const [pendingLogs, setPendingLogs] = useState([]);
   const [recentDecisions, setRecentDecisions] = useState([]);
+
+  // Executive state
+  const [execSessions, setExecSessions] = useState([]);
 
   const [loading, setLoading] = useState(true);
 
@@ -51,18 +56,129 @@ const Dashboard = () => {
     }
   }, []);
 
+  const fetchExecData = useCallback(async () => {
+    try {
+      const res = await getReports();
+      setExecSessions(res.data.data);
+    } catch (err) {
+      console.error('Failed to fetch executive data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAM) {
       fetchAMData();
+    } else if (isExec) {
+      fetchExecData();
     } else {
       fetchLecturerData();
     }
-  }, [isAM, fetchAMData, fetchLecturerData]);
+  }, [isAM, isExec, fetchAMData, fetchLecturerData, fetchExecData]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // Executive Office Dashboard
+  if (isExec) {
+    const totalSessions = execSessions.length;
+    const totalCheckins = execSessions.reduce((sum, s) => sum + (s.checkinCount || 0), 0);
+    const uniqueBatches = [...new Set(execSessions.map((s) => s.batch))];
+    const uniqueBranches = [...new Set(execSessions.map((s) => s.branch))];
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500">Attendance overview across all branches</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card flex items-center gap-4">
+            <div className="p-3 bg-primary-50 rounded-xl">
+              <FiBarChart2 className="w-6 h-6 text-primary-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Sessions</p>
+              <p className="text-2xl font-bold text-gray-900">{totalSessions}</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-4">
+            <div className="p-3 bg-green-50 rounded-xl">
+              <FiCheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Check-ins</p>
+              <p className="text-2xl font-bold text-gray-900">{totalCheckins}</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-4">
+            <div className="p-3 bg-blue-50 rounded-xl">
+              <FiBook className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Batches</p>
+              <p className="text-2xl font-bold text-gray-900">{uniqueBatches.length}</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-4">
+            <div className="p-3 bg-orange-50 rounded-xl">
+              <FiClock className="w-6 h-6 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Branches</p>
+              <p className="text-2xl font-bold text-gray-900">{uniqueBranches.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Sessions</h3>
+            <a href="/executive-dashboard" className="text-sm text-primary-600 hover:underline">
+              View Full Reports →
+            </a>
+          </div>
+          {execSessions.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <FiBarChart2 className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p>No sessions recorded yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {execSessions.slice(0, 10).map((s) => (
+                <div key={s._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2 py-0.5 rounded">
+                      {s.batch}
+                    </span>
+                    <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">
+                      {s.branch}
+                    </span>
+                    {s.subject && (
+                      <span className="inline-block bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded">
+                        {s.subject}
+                      </span>
+                    )}
+                    <span className="text-sm text-gray-500">by {s.lecturerId?.name || 'Unknown'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700">{s.checkinCount} students</span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(s.sessionDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }

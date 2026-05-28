@@ -76,6 +76,21 @@ const seedData = async () => {
     console.log('  Password: password123');
     console.log('  Role: Academic Manager (Dhanmondi)');
 
+    const demoExec = await User.create({
+      name: 'Executive Office',
+      email: 'executive@mie.com',
+      password: 'password123',
+      phone: '+880 1700-000002',
+      role: 'Executive Office',
+    });
+    console.log(`Seeded demo Executive: ${demoExec.email}`);
+
+    console.log('');
+    console.log('Demo Executive Office:');
+    console.log('  Email: executive@mie.com');
+    console.log('  Password: password123');
+    console.log('  Role: Executive Office');
+
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {

@@ -16,6 +16,10 @@ import EditClassLog from './pages/EditClassLog';
 import Settings from './pages/Settings';
 import MarksManagement from './pages/MarksManagement';
 import AttendanceApproval from './pages/AttendanceApproval';
+import StartSession from './pages/StartSession';
+import SessionCheckins from './pages/SessionCheckins';
+import StudentCheckin from './pages/StudentCheckin';
+import ExecutiveDashboard from './pages/ExecutiveDashboard';
 
 function App() {
   return (
@@ -25,6 +29,8 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/checkin" element={<StudentCheckin />} />
+          <Route path="/checkin/:code" element={<StudentCheckin />} />
 
           {/* Protected Routes */}
           <Route
@@ -45,6 +51,9 @@ function App() {
             <Route path="edit-log/:id" element={<EditClassLog />} />
             <Route path="marks" element={<MarksManagement />} />
             <Route path="attendance-approval" element={<AttendanceApproval />} />
+            <Route path="start-session" element={<StartSession />} />
+            <Route path="session/:id/checkins" element={<SessionCheckins />} />
+            <Route path="executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
