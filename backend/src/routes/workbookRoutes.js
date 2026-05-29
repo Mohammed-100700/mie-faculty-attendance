@@ -1,14 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/authMiddleware');
+const { protect, authorizeRole } = require('../middleware/authMiddleware');
 const {
-  getWorkbook, updateEmailSettings, addSheet, deleteSheet,
+  getWorkbook, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, syncMarks,
+  updateMark, toggleTestApproval, syncMarks, getAllWorkbooks,
 } = require('../controllers/workbookController');
 
+// Executive Office: view all lecturers' workbooks (read-only)
+router.get('/all', protect, authorizeRole('Executive Office'), getAllWorkbooks);
+
 router.get('/', protect, getWorkbook);
-router.put('/email-settings', protect, updateEmailSettings);
 router.post('/sheets', protect, addSheet);
 router.delete('/sheets/:sheetIndex', protect, deleteSheet);
 router.post('/sheets/:sheetIndex/tests', protect, addTest);

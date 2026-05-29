@@ -11,6 +11,7 @@ import {
   FiCheckCircle,
   FiPlay,
   FiBarChart2,
+  FiEye,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 
@@ -37,6 +38,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const executiveNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
     { to: '/executive-dashboard', icon: FiBarChart2, label: 'Attendance Reports' },
+    { to: '/executive-marks', icon: FiEye, label: 'Marks Review' },
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];
 

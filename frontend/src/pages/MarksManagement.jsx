@@ -1,23 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
-  FiPlus, FiTrash2, FiSend, FiCheckSquare, FiSquare,
-  FiBookOpen, FiUsers, FiSettings, FiX, FiMail,
+  FiPlus, FiTrash2, FiCheckSquare, FiSquare,
+  FiBookOpen, FiUsers, FiX,
 } from 'react-icons/fi';
-import emailjs from '@emailjs/browser';
 import {
-  getWorkbook, updateEmailSettings, addSheet, deleteSheet,
+  getWorkbook, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
-
-// EmailJS configuration — set in .env file
-// Sign up at https://www.emailjs.com/ → Create account → Add Email Service → Create template
-// ⚠️ IMPORTANT: In your EmailJS template, use {{{html_content}}} (triple braces) to render HTML properly!
-// Template body should be: Subject: {{subject}} <br><br> {{{html_content}}}
-// Free tier: 200 emails/month
-const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID || '';
-const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '';
-const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || '';
 
 const BATCHES = ['September', 'December', 'March'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
@@ -26,9 +16,6 @@ const MarksManagement = () => {
   const [workbook, setWorkbook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSheet, setActiveSheet] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [staffEmail, setStaffEmail] = useState('');
-
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [newBatch, setNewBatch] = useState(BATCHES[0]);
@@ -56,7 +43,6 @@ const MarksManagement = () => {
     try {
       const res = await getWorkbook();
       setWorkbook(res.data.data);
-      if (res.data.data) setStaffEmail(res.data.data.staffEmail || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -65,10 +51,6 @@ const MarksManagement = () => {
   };
 
   useEffect(() => {
-    // Initialize EmailJS
-    if (EMAILJS_PUBLIC_KEY) {
-      emailjs.init(EMAILJS_PUBLIC_KEY);
-    }
     fetchWorkbook();
     // Auto-sync marks on load to fix any missing entries
     syncMarks().then((res) => {
@@ -218,107 +200,6 @@ const MarksManagement = () => {
     } catch { showToast('Failed', 'error'); }
   };
 
-  const handleSendEmail = async () => {
-    const sheet = workbook.sheets[activeSheet];
-    const approvedTests = sheet.tests.filter((t) => t.approved);
-    if (approvedTests.length === 0) {
-      showToast('No tests approved. Check the boxes for tests to send.', 'error');
-      return;
-    }
-    if (!staffEmail.trim()) {
-      showToast('Please enter staff email in Settings first.', 'error');
-      return;
-    }
-    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
-      showToast('EmailJS is not configured. Please set VITE_EMAILJS_* in your .env file.', 'error');
-      return;
-    }
-
-    // Build beautiful HTML email — single table with all tests as columns
-    let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:700px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;">`;
-
-    // Header
-    html += `<div style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;padding:24px 28px;">`;
-    html += `<h1 style="margin:0;font-size:22px;letter-spacing:-0.5px;">📊 Marks Update</h1>`;
-    html += `<p style="margin:6px 0 0;opacity:0.9;font-size:14px;">${sheet.batch} • ${sheet.branch} • ${sheet.subject}</p>`;
-    html += `<p style="margin:4px 0 0;opacity:0.7;font-size:12px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`;
-    html += `</div>`;
-
-    // Single table with all tests as columns
-    html += `<div style="padding:20px 24px;overflow-x:auto;">`;
-    html += `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">`;
-
-    // Header row — Student + each test name with max marks
-    html += `<thead><tr style="background:#f1f5f9;">`;
-    html += `<th style="padding:12px 16px;text-align:left;border:1px solid #e2e8f0;font-size:13px;color:#475569;font-weight:700;min-width:140px;">Student</th>`;
-    for (const test of approvedTests) {
-      html += `<th style="padding:12px 10px;text-align:center;border:1px solid #e2e8f0;font-size:12px;color:#1e40af;font-weight:700;min-width:90px;">`;
-      html += `<div>${test.name}</div>`;
-      html += `<div style="font-size:10px;color:#64748b;font-weight:400;margin-top:2px;">out of ${test.maxMarks || 100}</div>`;
-      html += `</th>`;
-    }
-    html += `</tr></thead><tbody>`;
-
-    // Data rows — one per student
-    for (let r = 0; r < sheet.students.length; r++) {
-      const student = sheet.students[r];
-      const bg = r % 2 === 0 ? '#ffffff' : '#f8fafc';
-      html += `<tr style="background:${bg};">`;
-      html += `<td style="padding:10px 16px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;">${student.name}</td>`;
-      for (const test of approvedTests) {
-        const mark = student.marks.find((m) => m.colIndex === test.colIndex);
-        const markValue = mark && mark.value !== '' ? mark.value : '—';
-        html += `<td style="padding:10px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb;font-size:15px;">${markValue}</td>`;
-      }
-      html += `</tr>`;
-    }
-
-    html += `</tbody></table></div>`;
-
-    // Footer
-    html += `<div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">`;
-    html += `<p style="margin:0;color:#94a3b8;font-size:11px;">MIE Faculty Attendance System • ${sheet.students.length} student(s) • ${approvedTests.length} test(s)</p>`;
-    html += `</div></div>`;
-
-    try {
-      // Send HTML email via EmailJS
-      // Note: In your EmailJS template, use {{{html_content}}} (triple braces) to render HTML
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email: staffEmail,
-        subject: `Marks: ${sheet.batch} / ${sheet.branch} / ${sheet.subject}`,
-        html_content: html,
-      }, EMAILJS_PUBLIC_KEY);
-
-      // Reset approvals
-      setWorkbook((prev) => {
-        const updated = JSON.parse(JSON.stringify(prev));
-        updated.sheets[activeSheet].tests.forEach((t) => { t.approved = false; t.approvedAt = null; });
-        updated.lastEmailSentAt = new Date().toISOString();
-        return updated;
-      });
-
-      showToast(`Email sent successfully to ${staffEmail}!`);
-    } catch (err) {
-      console.error('EmailJS error:', err);
-      showToast('Failed to send email. Please try again.', 'error');
-    }
-  };
-
-
-  const handleSaveEmailSettings = async () => {
-    if (!staffEmail.trim()) {
-      showToast('Please enter staff email', 'error');
-      return;
-    }
-    try {
-      const res = await updateEmailSettings('', staffEmail.trim(), '');
-      setWorkbook(res.data.data);
-      showToast('Staff email saved!');
-    } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save', 'error');
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -332,7 +213,6 @@ const MarksManagement = () => {
   }
 
   const sheet = workbook.sheets[activeSheet];
-  const approvedCount = sheet ? sheet.tests.filter((t) => t.approved).length : 0;
 
   // Group sheets by batch for display
   const sheetsByBatch = {};
@@ -358,40 +238,7 @@ const MarksManagement = () => {
           <h1 className="text-2xl font-bold text-gray-900">Marks Management</h1>
           <p className="text-gray-500">Manage marks by batch, branch, and subject</p>
         </div>
-        <button onClick={() => setShowSettings(!showSettings)} className="btn-secondary text-sm flex items-center gap-2">
-          <FiSettings className="w-4 h-4" /> Settings
-        </button>
       </div>
-
-      {/* Settings */}
-      {showSettings && (
-        <div className="card border border-gray-200">
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><FiMail className="w-4 h-4" /> Email Settings</h3>
-          <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 mb-2">How to send marks via email</h4>
-              <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
-                <li>Enter the staff email below and click Save</li>
-                <li>Go to your sheet, check the tests you want to send</li>
-                <li>Click <strong>"Send Email"</strong> — this opens your email client</li>
-                <li>The marks are pre-filled in the email body</li>
-                <li>Review and send from your inbox</li>
-              </ol>
-            </div>
-
-            <div>
-              <label className="label">Staff Email (recipient)</label>
-              <input type="email" value={staffEmail} onChange={(e) => setStaffEmail(e.target.value)} className="input-field" placeholder="staff@mie.com" />
-            </div>
-
-            <button onClick={handleSaveEmailSettings} className="btn-primary w-full">Save Staff Email</button>
-
-            {workbook.lastEmailSentAt && (
-              <p className="text-xs text-gray-400">Last sent: {new Date(workbook.lastEmailSentAt).toLocaleString()}</p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Sheet Tabs grouped by Batch */}
       <div className="space-y-2">
@@ -535,7 +382,7 @@ const MarksManagement = () => {
               <div className="flex flex-wrap gap-2">
                 {sheet.tests.map((test, idx) => (
                   <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${test.approved ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-                    <button onClick={() => handleToggleApproval(idx)} title={test.approved ? 'Unapprove' : 'Approve & send'}>
+                    <button onClick={() => handleToggleApproval(idx)} title={test.approved ? 'Unapprove' : 'Toggle approval'}>
                       {test.approved ? <FiCheckSquare className="w-4 h-4 text-green-600" /> : <FiSquare className="w-4 h-4 text-gray-400" />}
                     </button>
                     <span className={`font-medium ${test.approved ? 'text-green-700' : 'text-gray-700'}`}>{test.name}</span>
@@ -665,28 +512,6 @@ const MarksManagement = () => {
             )}
           </div>
 
-          {/* Send Button */}
-          {sheet.tests.length > 0 && sheet.students.length > 0 && (
-            <div className="card bg-gradient-to-r from-primary-50 to-blue-50 border-primary-200">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900">Send Marks</h3>
-                  <p className="text-sm text-gray-500">
-                    {approvedCount > 0
-                      ? `${approvedCount} test column(s) approved. Email will be sent to ${staffEmail}.`
-                      : 'Check the boxes next to tests you want to send.'}
-                  </p>
-                </div>
-                <button
-                  onClick={handleSendEmail}
-                  disabled={approvedCount === 0}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <FiSend className="w-4 h-4" /> Send Email
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
 

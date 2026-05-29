@@ -1,41 +1,9 @@
 const Workbook = require('../models/Workbook');
-const User = require('../models/User');
-const crypto = require('crypto');
-
-// Encrypt/decrypt helpers for storing app passwords
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY;
-if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
-  console.error('FATAL: EMAIL_ENCRYPTION_KEY must be exactly 32 characters. Set it in .env');
-  process.exit(1);
-}
-
-// Set SendGrid API key
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
 
 // Sanitize helper — strip HTML tags and limit length
 function sanitize(str, maxLen = 200) {
   if (typeof str !== 'string') return '';
   return str.replace(/<[^>]*>/g, '').trim().substring(0, maxLen);
-}
-
-function encrypt(text) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decrypt(text) {
-  const parts = text.split(':');
-  const iv = Buffer.from(parts[0], 'hex');
-  const encrypted = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let decrypted = decipher.update(encrypted);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString();
 }
 
 // @desc    Get workbook
@@ -50,37 +18,6 @@ const getWorkbook = async (req, res, next) => {
         sheets: [],
       });
     }
-    res.json({ success: true, data: workbook });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Update lecturer email settings (Gmail + App Password)
-// @route   PUT /api/workbook/email-settings
-const updateEmailSettings = async (req, res, next) => {
-  try {
-    const { lecturerEmail, staffEmail } = req.body;
-    const update = staffEmail ? { staffEmail: sanitize(staffEmail, 100) } : {};
-
-    // If lecturer provided email + app password, encrypt and store in User model
-    if (lecturerEmail && req.body.appPassword) {
-      const email = sanitize(lecturerEmail, 100);
-      const appPassword = req.body.appPassword.trim();
-      if (appPassword.length < 8) {
-        return res.status(400).json({ success: false, message: 'App password must be at least 8 characters.' });
-      }
-      await User.findByIdAndUpdate(req.user._id, {
-        email,
-        emailAppPassword: encrypt(appPassword),
-      });
-    }
-
-    const workbook = await Workbook.findOneAndUpdate(
-      { lecturerId: req.user._id },
-      update,
-      { new: true, upsert: true }
-    );
     res.json({ success: true, data: workbook });
   } catch (error) {
     next(error);
@@ -294,8 +231,6 @@ const toggleTestApproval = async (req, res, next) => {
   }
 };
 
-// (Email sending now handled client-side via EmailJS)
-
 // @desc    Sync marks — add missing mark entries for students when tests were added after them
 // @route   POST /api/workbook/sync-marks
 const syncMarks = async (req, res, next) => {
@@ -325,9 +260,34 @@ const syncMarks = async (req, res, next) => {
   }
 };
 
+// @desc    Get all workbooks (for Executive Office view)
+// @route   GET /api/workbook/all
+const getAllWorkbooks = async (req, res, next) => {
+  try {
+    const workbooks = await Workbook.find({})
+      .populate('lecturerId', 'name email')
+      .lean();
+
+    const result = workbooks
+      .filter((wb) => wb.sheets && wb.sheets.length > 0 && wb.lecturerId)
+      .map((wb) => ({
+        lecturerId: wb.lecturerId._id,
+        lecturerName: wb.lecturerId.name,
+        lecturerEmail: wb.lecturerId.email,
+        sheets: wb.sheets,
+        lastEmailSentAt: wb.lastEmailSentAt,
+        createdAt: wb.createdAt,
+        updatedAt: wb.updatedAt,
+      }));
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getWorkbook,
-  updateEmailSettings,
   addSheet,
   deleteSheet,
   addTest,
@@ -337,4 +297,5 @@ module.exports = {
   updateMark,
   toggleTestApproval,
   syncMarks,
+  getAllWorkbooks,
 };

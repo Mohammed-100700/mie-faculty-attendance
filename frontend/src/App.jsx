@@ -20,6 +20,7 @@ import StartSession from './pages/StartSession';
 import SessionCheckins from './pages/SessionCheckins';
 import StudentCheckin from './pages/StudentCheckin';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
+import ExecutiveMarks from './pages/ExecutiveMarks';
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
             <Route path="start-session" element={<StartSession />} />
             <Route path="session/:id/checkins" element={<SessionCheckins />} />
             <Route path="executive-dashboard" element={<ExecutiveDashboard />} />
+            <Route path="executive-marks" element={<ExecutiveMarks />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
