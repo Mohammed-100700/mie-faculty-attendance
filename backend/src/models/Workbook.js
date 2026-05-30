@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
 const sheetSchema = new mongoose.Schema({
-  name: { type: String, required: true }, // e.g. "September / Dhanmondi / Mathematics"
+  name: { type: String, required: true }, // e.g. "2026 / September / Dhanmondi / Mathematics"
+  year: { type: String, default: String(new Date().getFullYear()) },
   batch: { type: String, required: true }, // e.g. "September"
   branch: { type: String, required: true }, // e.g. "Dhanmondi"
   subject: { type: String, required: true }, // e.g. "Mathematics"
@@ -17,6 +18,7 @@ const sheetSchema = new mongoose.Schema({
   students: [
     {
       name: { type: String, required: true },
+      ncukId: { type: String, default: '' },
       marks: [
         {
           colIndex: { type: Number, required: true },

@@ -28,7 +28,7 @@ const getWorkbook = async (req, res, next) => {
 // @route   POST /api/workbook/sheets
 const addSheet = async (req, res, next) => {
   try {
-    const { batch, branch, subject } = req.body;
+    const { batch, branch, subject, year } = req.body;
     if (!batch || !branch || !subject) {
       return res.status(400).json({ success: false, message: 'Batch, branch, and subject are required.' });
     }
@@ -37,6 +37,7 @@ const addSheet = async (req, res, next) => {
     const cleanBatch = sanitize(batch, 50);
     const cleanBranch = sanitize(branch, 50);
     const cleanSubject = sanitize(subject, 100);
+    const cleanYear = year ? sanitize(String(year), 4) : String(new Date().getFullYear());
 
     if (!cleanBatch || !cleanBranch || !cleanSubject) {
       return res.status(400).json({ success: false, message: 'Invalid batch, branch, or subject.' });
@@ -47,16 +48,17 @@ const addSheet = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Workbook not found.' });
     }
 
-    // Check for duplicate
+    // Check for duplicate (same year + batch + branch + subject)
     const exists = workbook.sheets.find(
-      (s) => s.batch === cleanBatch && s.branch === cleanBranch && s.subject === cleanSubject
+      (s) => s.year === cleanYear && s.batch === cleanBatch && s.branch === cleanBranch && s.subject === cleanSubject
     );
     if (exists) {
       return res.status(400).json({ success: false, message: 'This sheet already exists.' });
     }
 
     workbook.sheets.push({
-      name: `${cleanBatch} / ${cleanBranch} / ${cleanSubject}`,
+      name: `${cleanYear} / ${cleanBatch} / ${cleanBranch} / ${cleanSubject}`,
+      year: cleanYear,
       batch,
       branch,
       subject,
@@ -149,7 +151,7 @@ const deleteTest = async (req, res, next) => {
 const addStudent = async (req, res, next) => {
   try {
     const { sheetIndex } = req.params;
-    const { name } = req.body;
+    const { name, ncukId } = req.body;
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
     if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
 
@@ -161,8 +163,32 @@ const addStudent = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Student name is required.' });
     }
 
+    const cleanNcukId = ncukId ? sanitize(ncukId, 50) : '';
+
     const marks = sheet.tests.map((t, i) => ({ colIndex: i + 1, value: '' }));
-    sheet.students.push({ name: cleanName, marks });
+    sheet.students.push({ name: cleanName, ncukId: cleanNcukId, marks });
+    await workbook.save();
+    res.json({ success: true, data: workbook });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update a student's NCUK ID
+// @route   PUT /api/workbook/sheets/:sheetIndex/students/:studentIndex/ncukId
+const updateStudentNcukId = async (req, res, next) => {
+  try {
+    const { sheetIndex, studentIndex } = req.params;
+    const { ncukId } = req.body;
+    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
+    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+
+    const sheet = workbook.sheets[sheetIndex];
+    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
+    const student = sheet.students[studentIndex];
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found.' });
+    student.ncukId = ncukId ? sanitize(ncukId, 50) : '';
+
     await workbook.save();
     res.json({ success: true, data: workbook });
   } catch (error) {
@@ -295,6 +321,7 @@ module.exports = {
   addStudent,
   deleteStudent,
   updateMark,
+  updateStudentNcukId,
   toggleTestApproval,
   syncMarks,
   getAllWorkbooks,

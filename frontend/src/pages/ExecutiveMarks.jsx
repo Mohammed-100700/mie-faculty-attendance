@@ -11,6 +11,7 @@ const ExecutiveMarks = () => {
   const [expandedWorkbook, setExpandedWorkbook] = useState(null);
   const [activeSheet, setActiveSheet] = useState({});
   const [lecturerSearch, setLecturerSearch] = useState('');
+  const [studentSearch, setStudentSearch] = useState({});
 
   const fetchWorkbooks = async () => {
     try {
@@ -153,6 +154,7 @@ const ExecutiveMarks = () => {
                                   : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                               }`}
                             >
+                              <span className="text-xs opacity-75">{s.year}</span>
                               <span className="text-xs opacity-75">{s.branch}</span>
                               <span>{s.subject}</span>
                               <span className="text-xs opacity-75">({s.students.length})</span>
@@ -167,6 +169,7 @@ const ExecutiveMarks = () => {
                       <>
                         {/* Sheet badges */}
                         <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.year || new Date().getFullYear()}</span>
                           <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2.5 py-1 rounded">{sheet.batch}</span>
                           <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.branch}</span>
                           <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.subject}</span>
@@ -197,13 +200,44 @@ const ExecutiveMarks = () => {
                           </div>
                         )}
 
+                        {/* Student Search Input */}
+                        {sheet.students.length > 0 && sheet.tests.length > 0 && (
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                              type="text"
+                              value={studentSearch[wbKey] || ''}
+                              onChange={(e) => setStudentSearch((prev) => ({ ...prev, [wbKey]: e.target.value }))}
+                              className="input-field pl-10 text-sm w-full max-w-xs"
+                              placeholder="Search by name or NCUK ID..."
+                            />
+                          </div>
+                        )}
+
                         {/* Marks Table */}
-                        {sheet.students.length > 0 && sheet.tests.length > 0 ? (
+                        {sheet.students.length > 0 && sheet.tests.length > 0 ? (() => {
+                          const searchLower = (studentSearch[wbKey] || '').trim().toLowerCase();
+                          const displayStudents = searchLower
+                            ? sheet.students.filter((s) =>
+                                s.name.toLowerCase().includes(searchLower) ||
+                                (s.ncukId && s.ncukId.toLowerCase().includes(searchLower))
+                              )
+                            : sheet.students;
+
+                          if (displayStudents.length === 0) {
+                            return (
+                              <div className="text-center py-8 text-gray-400">
+                                <p>No students match &quot;{studentSearch[wbKey]}&quot;</p>
+                              </div>
+                            );
+                          }
+                          return (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="border-b border-gray-200">
-                                  <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50 sticky left-0 z-10 min-w-[150px]">Student</th>
+                                  <th className="text-left py-3 px-3 font-semibold text-gray-700 bg-gray-50 sticky left-0 z-20 min-w-[100px]">NCUK ID</th>
+                                  <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50 sticky left-[100px] z-10 min-w-[150px]">Student</th>
                                   {sheet.tests.map((test, idx) => (
                                     <th
                                       key={idx}
@@ -220,8 +254,11 @@ const ExecutiveMarks = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {sheet.students.map((student, sIdx) => (
+                                {displayStudents.map((student, sIdx) => (
                                   <tr key={sIdx} className={sIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                    <td className="py-2 px-3 text-gray-700 font-mono text-xs">
+                                      {student.ncukId || '—'}
+                                    </td>
                                     <td className="py-2 px-4 font-medium text-gray-900">
                                       {student.name}
                                     </td>
@@ -242,9 +279,42 @@ const ExecutiveMarks = () => {
                                   </tr>
                                 ))}
                               </tbody>
+                              <tfoot>
+                                <tr className="border-t-2 border-gray-300 bg-blue-50/60">
+                                  <td className="py-2 px-3 font-semibold text-blue-800 text-xs sticky left-0 z-20 bg-blue-50/60" colSpan={2}>
+                                    Average
+                                  </td>
+                                  {sheet.tests.map((test, tIdx) => {
+                                    const maxMarks = test.maxMarks || 100;
+                                    let total = 0;
+                                    let count = 0;
+                                    sheet.students.forEach((student) => {
+                                      const mark = student.marks.find((m) => m.colIndex === test.colIndex);
+                                      const val = mark ? parseFloat(mark.value) : NaN;
+                                      if (!isNaN(val)) {
+                                        total += val;
+                                        count++;
+                                      }
+                                    });
+                                    const avg = count > 0 ? (total / count).toFixed(1) : '—';
+                                    const percentage = count > 0 ? ((parseFloat(avg) / maxMarks) * 100).toFixed(0) : null;
+                                    return (
+                                      <td key={tIdx} className={`py-2 px-3 text-center text-xs font-semibold ${test.approved ? 'text-green-700' : 'text-blue-800'}`}>
+                                        <div>{avg}</div>
+                                        {percentage !== null && (
+                                          <div className={`text-xs font-normal mt-0.5 ${test.approved ? 'text-green-500' : 'text-blue-500'}`}>
+                                            {percentage}%
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              </tfoot>
                             </table>
                           </div>
-                        ) : sheet.students.length === 0 ? (
+                          );
+                        })() : sheet.students.length === 0 ? (
                           <div className="text-center py-6 text-gray-400">
                             <FiUsers className="w-8 h-8 mx-auto mb-2 opacity-50" />
                             <p className="text-sm">No students added yet.</p>

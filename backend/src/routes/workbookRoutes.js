@@ -4,7 +4,7 @@ const { protect, authorizeRole } = require('../middleware/authMiddleware');
 const {
   getWorkbook, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, syncMarks, getAllWorkbooks,
+  updateMark, updateStudentNcukId, toggleTestApproval, syncMarks, getAllWorkbooks,
 } = require('../controllers/workbookController');
 
 // Executive Office: view all lecturers' workbooks (read-only)
@@ -18,6 +18,7 @@ router.delete('/sheets/:sheetIndex/tests/:testIndex', protect, deleteTest);
 router.post('/sheets/:sheetIndex/students', protect, addStudent);
 router.delete('/sheets/:sheetIndex/students/:studentIndex', protect, deleteStudent);
 router.put('/sheets/:sheetIndex/students/:studentIndex/marks/:colIndex', protect, updateMark);
+router.put('/sheets/:sheetIndex/students/:studentIndex/ncukId', protect, updateStudentNcukId);
 router.put('/sheets/:sheetIndex/tests/:testIndex/toggle', protect, toggleTestApproval);
 router.post('/sync-marks', protect, syncMarks);
 

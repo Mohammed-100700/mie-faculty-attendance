@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import {
   FiPlus, FiTrash2, FiCheckSquare, FiSquare,
-  FiBookOpen, FiUsers, FiX,
+  FiBookOpen, FiUsers, FiX, FiArrowUp, FiArrowDown,
 } from 'react-icons/fi';
 import {
   getWorkbook, addSheet, deleteSheet,
   addTest, deleteTest, addStudent, deleteStudent,
-  updateMark, toggleTestApproval, syncMarks,
+  updateMark, updateStudentNcukId, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
 
-const BATCHES = ['September', 'December', 'March'];
+const BATCHES = ['March', 'July', 'September', 'December'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
+const YEARS = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - 2 + i));
 
 const MarksManagement = () => {
   const [workbook, setWorkbook] = useState(null);
@@ -19,6 +20,7 @@ const MarksManagement = () => {
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [newBatch, setNewBatch] = useState(BATCHES[0]);
+  const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
   const [newBranch, setNewBranch] = useState(BRANCHES[0]);
   const [newSubject, setNewSubject] = useState('');
 
@@ -27,10 +29,12 @@ const MarksManagement = () => {
   const [newTestMaxMarks, setNewTestMaxMarks] = useState(100);
   const [showAddTest, setShowAddTest] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentNcukId, setNewStudentNcukId] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [bulkStudentNames, setBulkStudentNames] = useState('');
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // key: 'name' | 'ncukId'
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -64,12 +68,12 @@ const MarksManagement = () => {
     e.preventDefault();
     if (!newSubject.trim()) return;
     try {
-      const res = await addSheet(newBatch, newBranch, newSubject.trim());
+      const res = await addSheet(newBatch, newBranch, newSubject.trim(), newYear);
       setWorkbook(res.data.data);
       setNewSubject('');
       setShowAddSheet(false);
       setActiveSheet(workbook.sheets.length);
-      showToast(`Sheet "${newBatch} / ${newBranch} / ${newSubject}" created!`);
+      showToast(`Sheet "${newYear} / ${newBatch} / ${newBranch} / ${newSubject}" created!`);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to add sheet', 'error');
     }
@@ -119,9 +123,10 @@ const MarksManagement = () => {
   const handleAddStudent = async () => {
     if (!newStudentName.trim()) return;
     try {
-      const res = await addStudent(activeSheet, newStudentName.trim());
+      const res = await addStudent(activeSheet, newStudentName.trim(), newStudentNcukId.trim());
       setWorkbook(res.data.data);
       setNewStudentName('');
+      setNewStudentNcukId('');
       setShowAddStudent(false);
       showToast(`Student "${newStudentName}" added!`);
     } catch { showToast('Failed to add student', 'error'); }
@@ -193,11 +198,29 @@ const MarksManagement = () => {
     } catch { /* silent */ }
   };
 
+  const handleNcukIdBlur = async (studentIndex) => {
+    const currentWorkbook = workbook;
+    const sheet = currentWorkbook.sheets[activeSheet];
+    if (!sheet) return;
+    const student = sheet.students[studentIndex];
+    if (!student) return;
+    try {
+      await updateStudentNcukId(activeSheet, studentIndex, student.ncukId || '');
+    } catch { /* silent */ }
+  };
+
   const handleToggleApproval = async (testIndex) => {
     try {
       const res = await toggleTestApproval(activeSheet, testIndex);
       setWorkbook(res.data.data);
     } catch { showToast('Failed', 'error'); }
+  };
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
   };
 
   if (loading) {
@@ -255,6 +278,7 @@ const MarksManagement = () => {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
+                <span className="text-xs opacity-75">{s.year}</span>
                 <span className="text-xs opacity-75">{s.branch}</span>
                 <span>{s.subject}</span>
                 <span className="text-xs opacity-75">({s.students.length})</span>
@@ -283,6 +307,12 @@ const MarksManagement = () => {
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">Add New Sheet</h3>
             <form onSubmit={handleAddSheet} className="space-y-4">
+              <div>
+                <label className="label">Year</label>
+                <select value={newYear} onChange={(e) => setNewYear(e.target.value)} className="input-field">
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="label">Batch</label>
                 <select value={newBatch} onChange={(e) => setNewBatch(e.target.value)} className="input-field">
@@ -349,6 +379,7 @@ const MarksManagement = () => {
           {/* Sheet Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.year || new Date().getFullYear()}</span>
               <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2.5 py-1 rounded">{sheet.batch}</span>
               <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.branch}</span>
               <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.subject}</span>
@@ -402,10 +433,17 @@ const MarksManagement = () => {
               <h3 className="font-semibold text-gray-900 flex items-center gap-2"><FiUsers className="w-5 h-5" /> Students & Marks</h3>
               <div className="flex gap-2 items-center">
                 {showAddStudent ? (
-                  <div className="flex gap-2">
-                    <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="input-field text-sm py-1 px-2 w-40" placeholder="Student name" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAddStudent(); if (e.key === 'Escape') setShowAddStudent(false); }} />
-                    <button onClick={handleAddStudent} className="btn-primary text-xs py-1 px-2">Add</button>
-                    <button onClick={() => { setShowAddStudent(false); setNewStudentName(''); }} className="btn-secondary text-xs py-1 px-2">Cancel</button>
+                  <div className="flex gap-2 items-end">
+                    <div>
+                      <label className="label">Student Name</label>
+                      <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} className="input-field text-sm py-1 px-2 w-40" placeholder="Student name" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAddStudent(); if (e.key === 'Escape') setShowAddStudent(false); }} />
+                    </div>
+                    <div>
+                      <label className="label">NCUK ID</label>
+                      <input type="text" value={newStudentNcukId} onChange={(e) => setNewStudentNcukId(e.target.value)} className="input-field text-sm py-1 px-2 w-32" placeholder="e.g. NCUK12345" onKeyDown={(e) => { if (e.key === 'Enter') handleAddStudent(); if (e.key === 'Escape') setShowAddStudent(false); }} />
+                    </div>
+                    <button onClick={handleAddStudent} className="btn-primary text-xs py-1.5 px-2">Add</button>
+                    <button onClick={() => { setShowAddStudent(false); setNewStudentName(''); setNewStudentNcukId(''); }} className="btn-secondary text-xs py-1.5 px-2">Cancel</button>
                   </div>
                 ) : (
                   <>
@@ -429,18 +467,31 @@ const MarksManagement = () => {
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
                     className="input-field text-sm py-1.5 px-3 w-full max-w-xs"
-                    placeholder="Search students..."
+                    placeholder="Search by name or NCUK ID..."
                   />
                 </div>
               </>
             ) : null}
 
             {sheet.students.length > 0 && sheet.tests.length > 0 ? (() => {
-              const filteredStudents = studentSearch.trim()
+              const searchLower = studentSearch.trim().toLowerCase();
+              let filteredStudents = searchLower
                 ? sheet.students.filter((s) =>
-                    s.name.toLowerCase().includes(studentSearch.toLowerCase())
+                    s.name.toLowerCase().includes(searchLower) ||
+                    (s.ncukId && s.ncukId.toLowerCase().includes(searchLower))
                   )
-                : sheet.students;
+                : [...sheet.students];
+
+              // Sort students
+              if (sortConfig.key) {
+                filteredStudents.sort((a, b) => {
+                  const valA = (sortConfig.key === 'name' ? a.name : (a.ncukId || '')).toLowerCase();
+                  const valB = (sortConfig.key === 'name' ? b.name : (b.ncukId || '')).toLowerCase();
+                  if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+                  if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+                  return 0;
+                });
+              }
 
               if (filteredStudents.length === 0) {
                 return (
@@ -450,12 +501,28 @@ const MarksManagement = () => {
                 );
               }
 
+              const getSortIcon = (key) => {
+                if (sortConfig.key !== key) return <FiArrowUp className="w-3 h-3 opacity-30" />;
+                return sortConfig.direction === 'asc'
+                  ? <FiArrowUp className="w-3 h-3 text-primary-600" />
+                  : <FiArrowDown className="w-3 h-3 text-primary-600" />;
+              };
+
               return (
                 <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50 sticky left-0 z-10 min-w-[150px]">Student</th>
+                      <th className="text-left py-3 px-3 font-semibold text-gray-700 bg-gray-50 sticky left-0 z-20 min-w-[100px]">
+                        <button onClick={() => handleSort('ncukId')} className="flex items-center gap-1 hover:text-primary-600 transition-colors">
+                          NCUK ID {getSortIcon('ncukId')}
+                        </button>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 bg-gray-50 sticky left-[100px] z-10 min-w-[150px]">
+                        <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-primary-600 transition-colors">
+                          Student {getSortIcon('name')}
+                        </button>
+                      </th>
                       {sheet.tests.map((test, idx) => (
                         <th key={idx} className={`text-center py-3 px-3 font-semibold min-w-[90px] ${test.approved ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-700'}`}>
                           <div>{test.name}</div>
@@ -470,7 +537,24 @@ const MarksManagement = () => {
                       const realIndex = sheet.students.indexOf(student);
                       return (
                       <tr key={realIndex} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-4 font-medium text-gray-900 sticky left-0 bg-white z-10">
+                        <td className="py-2 px-3 bg-white sticky left-0 z-20">
+                          <input
+                            type="text"
+                            value={student.ncukId || ''}
+                            onChange={(e) => {
+                              setWorkbook((prev) => {
+                                const updated = JSON.parse(JSON.stringify(prev));
+                                const s = updated.sheets[activeSheet];
+                                if (s && s.students[realIndex]) s.students[realIndex].ncukId = e.target.value;
+                                return updated;
+                              });
+                            }}
+                            onBlur={() => handleNcukIdBlur(realIndex)}
+                            className="w-full py-1 px-2 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                            placeholder="NCUK ID"
+                          />
+                        </td>
+                        <td className="py-2 px-4 font-medium text-gray-900 sticky left-[100px] bg-white z-10">
                           <div className="flex items-center justify-between gap-2">
                             <span>{student.name}</span>
                             <button onClick={() => handleDeleteStudent(realIndex)} className="text-gray-300 hover:text-red-500"><FiTrash2 className="w-3 h-3" /></button>
@@ -479,16 +563,26 @@ const MarksManagement = () => {
                         {sheet.tests.map((test, tIdx) => {
                           const mark = student.marks.find((m) => m.colIndex === test.colIndex);
                           const value = mark ? mark.value : '';
+                          const numVal = parseFloat(value);
+                          const maxMarks = test.maxMarks || 100;
+                          const isOverLimit = value !== '' && !isNaN(numVal) && numVal > maxMarks;
                           return (
                             <td key={tIdx} className="py-2 px-3 text-center">
-                              <input
-                                type="text"
-                                value={value}
-                                onChange={(e) => handleMarkChange(realIndex, test.colIndex, e.target.value)}
-                                onBlur={() => handleMarkBlur(realIndex, test.colIndex)}
-                                className={`w-14 text-center py-1 px-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 ${test.approved ? 'border-green-200 bg-green-50/30' : 'border-gray-200'}`}
-                                placeholder="-"
-                              />
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  value={value}
+                                  onChange={(e) => handleMarkChange(realIndex, test.colIndex, e.target.value)}
+                                  onBlur={() => handleMarkBlur(realIndex, test.colIndex)}
+                                  className={`w-14 text-center py-1 px-2 rounded border text-sm focus:outline-none focus:ring-2 ${isOverLimit ? 'border-red-400 bg-red-50 focus:ring-red-300' : test.approved ? 'border-green-200 bg-green-50/30 focus:ring-primary-300' : 'border-gray-200 focus:ring-primary-300'}`}
+                                  placeholder="-"
+                                />
+                                {isOverLimit && (
+                                  <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                                    <span className="text-xs text-red-500 font-medium">Max: {maxMarks}</span>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           );
                         })}
@@ -497,6 +591,39 @@ const MarksManagement = () => {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 bg-blue-50/60">
+                      <td className="py-2 px-3 font-semibold text-blue-800 text-xs sticky left-0 z-20 bg-blue-50/60" colSpan={2}>
+                        Average
+                      </td>
+                      {sheet.tests.map((test, tIdx) => {
+                        const maxMarks = test.maxMarks || 100;
+                        let total = 0;
+                        let count = 0;
+                        sheet.students.forEach((student) => {
+                          const mark = student.marks.find((m) => m.colIndex === test.colIndex);
+                          const val = mark ? parseFloat(mark.value) : NaN;
+                          if (!isNaN(val)) {
+                            total += val;
+                            count++;
+                          }
+                        });
+                        const avg = count > 0 ? (total / count).toFixed(1) : '—';
+                        const percentage = count > 0 ? ((parseFloat(avg) / maxMarks) * 100).toFixed(0) : null;
+                        return (
+                          <td key={tIdx} className={`py-2 px-3 text-center text-xs font-semibold ${test.approved ? 'text-green-700' : 'text-blue-800'}`}>
+                            <div>{avg}</div>
+                            {percentage !== null && (
+                              <div className={`text-xs font-normal mt-0.5 ${test.approved ? 'text-green-500' : 'text-blue-500'}`}>
+                                {percentage}%
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="w-8"></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
               );
