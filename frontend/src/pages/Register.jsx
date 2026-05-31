@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiMail, FiLock, FiUser, FiPhone, FiMapPin } from 'react-icons/fi';
+import { FiMail, FiLock, FiUser, FiPhone, FiMapPin, FiBook } from 'react-icons/fi';
 import { register } from '../api/authApi';
+import { getSubjects } from '../api/subjectApi';
 import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
@@ -12,12 +13,26 @@ const Register = () => {
     confirmPassword: '',
     phone: '',
     branches: [],
+    subjects: [],
     role: 'Lecturer',
   });
+  const [availableSubjects, setAvailableSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { loginUser } = useAuth();
+
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const res = await getSubjects();
+        setAvailableSubjects(res.data.data);
+      } catch {
+        // Non-critical: subjects list will be empty
+      }
+    };
+    fetchSubjects();
+  }, []);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -32,6 +47,15 @@ const Register = () => {
     }));
   };
 
+  const handleSubjectToggle = (subjectId) => {
+    setForm((prev) => ({
+      ...prev,
+      subjects: prev.subjects.includes(subjectId)
+        ? prev.subjects.filter((s) => s !== subjectId)
+        : [...prev.subjects, subjectId],
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -43,6 +67,11 @@ const Register = () => {
 
     if (form.role === 'Lecturer' && form.branches.length === 0) {
       setError('Please select at least one branch.');
+      return;
+    }
+
+    if (form.role === 'Lecturer' && form.subjects.length === 0) {
+      setError('Please select at least one subject.');
       return;
     }
 
@@ -86,7 +115,7 @@ const Register = () => {
                     key={r}
                     className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
                       form.role === r
-                        ? 'bg-primary-50 border-primary-300 text-primary-700'
+                        ? 'bg-primary-50 border-primary-300 text-primary-70'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                   >
@@ -162,6 +191,34 @@ const Register = () => {
                       <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
                       <FiMapPin className="w-4 h-4" />
                       {branch}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Subject selection for Lecturers */}
+            {form.role === 'Lecturer' && availableSubjects.length > 0 && (
+              <div>
+                <label className="label">Subjects You Teach (NCUK IFY)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableSubjects.map((subject) => (
+                    <label
+                      key={subject._id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                        form.subjects.includes(subject._id)
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.subjects.includes(subject._id)}
+                        onChange={() => handleSubjectToggle(subject._id)}
+                        className="sr-only"
+                      />
+                      <FiBook className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{subject.name}</span>
                     </label>
                   ))}
                 </div>

@@ -8,21 +8,37 @@ import {
   addTest, deleteTest, addStudent, deleteStudent,
   updateMark, updateStudentNcukId, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
+import { useAuth } from '../context/AuthContext';
 
 const BATCHES = ['March', 'July', 'September', 'December'];
 const BRANCHES = ['Dhanmondi', 'Uttara'];
 const YEARS = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - 2 + i));
 
 const MarksManagement = () => {
+  const { user } = useAuth();
   const [workbook, setWorkbook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSheet, setActiveSheet] = useState(0);
+  // Lecturer's assigned subjects from their profile
+  const [lecturerSubjects, setLecturerSubjects] = useState([]);
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [newBatch, setNewBatch] = useState(BATCHES[0]);
   const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
   const [newBranch, setNewBranch] = useState(BRANCHES[0]);
   const [newSubject, setNewSubject] = useState('');
+
+  // Load lecturer's assigned subjects from user context
+  useEffect(() => {
+    if (user && user.subjects && user.subjects.length > 0) {
+      setLecturerSubjects(user.subjects);
+      // Set default to first subject if none selected yet
+      if (!newSubject) {
+        const firstSub = user.subjects[0];
+        setNewSubject(typeof firstSub === 'object' ? firstSub.name : '');
+      }
+    }
+  }, [user]);
 
   // Inline forms
   const [newTestName, setNewTestName] = useState('');
@@ -327,16 +343,41 @@ const MarksManagement = () => {
               </div>
               <div>
                 <label className="label">Subject</label>
-                <input
-                  type="text"
-                  value={newSubject}
-                  onChange={(e) => setNewSubject(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g., Mathematics, Chemistry, English"
-                  required
-                  autoFocus
-                />
-                <p className="text-xs text-gray-400 mt-1">Enter any subject name</p>
+                {lecturerSubjects.length > 0 ? (
+                  <select
+                    value={newSubject}
+                    onChange={(e) => setNewSubject(e.target.value)}
+                    className="input-field"
+                    required
+                    autoFocus
+                  >
+                    <option value="">Select a subject...</option>
+                    {lecturerSubjects.map((sub) => {
+                      const subName = typeof sub === 'object' ? sub.name : sub;
+                      return (
+                        <option key={typeof sub === 'object' ? sub._id : sub} value={subName}>
+                          {subName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={newSubject}
+                      onChange={(e) => setNewSubject(e.target.value)}
+                      className="input-field"
+                      placeholder="e.g., Mathematics, Chemistry"
+                      required
+                      autoFocus
+                    />
+                    <p className="text-xs text-amber-600">
+                      ⚠️ No subjects assigned to your account. Please add subjects in your{' '}
+                      <a href="/profile" className="underline font-medium hover:text-amber-700">Profile</a>.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => setShowAddSheet(false)} className="btn-secondary">Cancel</button>

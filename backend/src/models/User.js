@@ -37,6 +37,20 @@ const userSchema = new mongoose.Schema(
         enum: ['Dhanmondi', 'Uttara'],
       },
     ],
+    subjects: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Subject',
+      },
+    ],
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
     // Branch this Academic Manager oversees (null for Lecturers)
     managedBranch: {
       type: String,

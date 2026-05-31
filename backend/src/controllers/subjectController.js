@@ -5,10 +5,6 @@ const Subject = require('../models/Subject');
 const getSubjects = async (req, res, next) => {
   try {
     const subjects = await Subject.find({
-      $or: [
-        { isDefault: true },
-        { createdBy: req.user._id },
-      ],
       isActive: true,
     }).sort({ name: 1 });
 
@@ -70,13 +66,15 @@ const createSubject = async (req, res, next) => {
 const seedSubjects = async (req, res, next) => {
   try {
     const defaultSubjects = [
-      'Mathematics',
+      'Integrated Mathematics',
+      'Technical Mathematics',
       'Physics',
       'Chemistry',
-      'Computer Science',
-      'Business Studies',
+      'Biology',
       'Economics',
-      'English for Academic Purposes',
+      'Business Studies',
+      'Global Studies',
+      'Sociology',
     ];
 
     const results = [];

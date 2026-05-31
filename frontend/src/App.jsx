@@ -21,6 +21,8 @@ import SessionCheckins from './pages/SessionCheckins';
 import StudentCheckin from './pages/StudentCheckin';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import ExecutiveMarks from './pages/ExecutiveMarks';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
@@ -32,6 +34,8 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/checkin" element={<StudentCheckin />} />
           <Route path="/checkin/:code" element={<StudentCheckin />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Protected Routes */}
           <Route

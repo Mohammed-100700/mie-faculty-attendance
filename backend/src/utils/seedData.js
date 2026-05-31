@@ -24,14 +24,18 @@ const seedData = async () => {
     console.log(`Seeded ${branches.length} branches.`);
 
     const subjectNames = [
-      'Mathematics', 'Physics', 'Chemistry', 'Computer Science',
-      'Business Studies', 'Economics', 'English for Academic Purposes',
+      'Integrated Mathematics', 'Technical Mathematics', 'Physics',
+      'Chemistry', 'Biology', 'Economics',
+      'Business Studies', 'Global Studies', 'Sociology',
     ];
     const subjectDocs = subjectNames.map((name) => ({
       name, programme: 'NCUK IFY', createdBy: null, isDefault: true, isActive: true,
     }));
     const subjects = await Subject.insertMany(subjectDocs);
     console.log(`Seeded ${subjects.length} subjects.`);
+
+    // Pick 3 sample subjects for the demo lecturer
+    const sampleSubjectIds = subjects.slice(0, 3).map((s) => s._id);
 
     const demoLecturer = await User.create({
       name: 'Demo Lecturer',
@@ -40,6 +44,7 @@ const seedData = async () => {
       phone: '+880 1700-000000',
       role: 'Lecturer',
       branches: ['Dhanmondi', 'Uttara'],
+      subjects: sampleSubjectIds,
     });
     console.log(`Seeded demo lecturer: ${demoLecturer.email}`);
 
