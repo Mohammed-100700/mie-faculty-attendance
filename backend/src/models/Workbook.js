@@ -34,8 +34,8 @@ const workbookSchema = new mongoose.Schema(
     lecturerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
-      unique: true,
+      default: null,
+      sparse: true,
     },
     staffEmail: {
       type: String,
@@ -43,6 +43,20 @@ const workbookSchema = new mongoose.Schema(
     },
     sheets: [sheetSchema],
     lastEmailSentAt: { type: Date, default: null },
+    // Template fields (used when isTemplate = true)
+    isTemplate: { type: Boolean, default: false },
+    templateName: { type: String, default: null },
+    programme: { type: String, default: null },
+    year: { type: Number, default: null },
+    semester: { type: Number, default: null },
+    classes: [
+      {
+        name: { type: String },
+        term: { type: String },
+        startDate: { type: String },
+        endDate: { type: String },
+      },
+    ],
   },
   { timestamps: true }
 );
