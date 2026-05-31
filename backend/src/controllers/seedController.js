@@ -30,6 +30,28 @@ const seedAll = async (req, res, next) => {
 
     const results = {};
 
+    // ── 0. Fix stale unique index on Workbook.lecturerId ─────────
+    // The old schema had `unique: true` on lecturerId; the new schema
+    // uses `sparse: true` so multiple template docs can have null.
+    // Mongoose never drops indexes automatically, so we drop it manually.
+    try {
+      const wbCollection = mongoose.connection.collection('workbooks');
+      const indexes = await wbCollection.indexes();
+      const uniqueLecturerIdx = indexes.find(
+        (idx) => idx.key && idx.key.lecturerId === 1 && idx.unique
+      );
+      if (uniqueLecturerIdx) {
+        await wbCollection.dropIndex(uniqueLecturerIdx.name);
+        results.indexFix = `Dropped stale unique index '${uniqueLecturerIdx.name}' on workbooks.lecturerId`;
+      } else {
+        results.indexFix = 'No stale unique index found (already clean)';
+      }
+    } catch (idxError) {
+      results.indexFix = `Index check note: ${idxError.message}`;
+    }
+    // Re-sync indexes with the updated schema
+    await Workbook.syncIndexes();
+
     // ── 1. Branches ──────────────────────────────────────────────
     const defaultBranches = [
       { name: 'Dhanmondi', code: 'DHN' },
