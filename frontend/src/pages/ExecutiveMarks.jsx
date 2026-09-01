@@ -3,6 +3,7 @@ import {
   FiBookOpen, FiUsers, FiChevronDown, FiChevronUp, FiSearch,
 } from 'react-icons/fi';
 import { getAllWorkbooks } from '../api/workbookApi';
+import { exportIndividualPdf, exportClassPdf } from '../utils/exportMarksPdf';
 
 const ExecutiveMarks = () => {
   const [workbooks, setWorkbooks] = useState([]);
@@ -175,6 +176,23 @@ const ExecutiveMarks = () => {
                           <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded">{sheet.subject}</span>
                         </div>
 
+                        {/* Export actions */}
+                        {sheet.students.length > 0 && sheet.tests.length > 0 && (
+                          <div className="flex items-center gap-2 mt-3">
+                            <button
+                              onClick={() => exportClassPdf({
+                                sheet,
+                                students: sheet.students,
+                                tests: sheet.tests,
+                                lecturerName: wb.lecturerName
+                              })}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary-600 text-white"
+                            >
+                              Download Class PDF
+                            </button>
+                          </div>
+                        )}
+
                         {/* Tests */}
                         {sheet.tests.length > 0 && (
                           <div>
@@ -276,6 +294,18 @@ const ExecutiveMarks = () => {
                                         </td>
                                       );
                                     })}
+                                    <td className="py-2 px-3 text-center">
+                                      <button
+                                        onClick={() => exportIndividualPdf({
+                                          student,
+                                          sheet,
+                                          lecturerName: wb.lecturerName
+                                        })}
+                                        className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                      >
+                                        PDF
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
