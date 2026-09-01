@@ -294,17 +294,49 @@ const getAllWorkbooks = async (req, res, next) => {
       .populate('lecturerId', 'name email')
       .lean();
 
-    const result = workbooks
-      .filter((wb) => wb.sheets && wb.sheets.length > 0 && wb.lecturerId)
-      .map((wb) => ({
-        lecturerId: wb.lecturerId._id,
-        lecturerName: wb.lecturerId.name,
-        lecturerEmail: wb.lecturerId.email,
-        sheets: wb.sheets,
-        lastEmailSentAt: wb.lastEmailSentAt,
-        createdAt: wb.createdAt,
-        updatedAt: wb.updatedAt,
-      }));
+    let result;
+
+    if (req.user.role === 'Academic Manager') {
+      const managedBranch = req.user.managedBranch;
+      if (!managedBranch) {
+        return res.json({ success: true, data: [] });
+      }
+
+      const filteredWorkbooks = workbooks.filter((wb) => {
+        const matchingSheets = wb.sheets?.filter(
+          (s) => s.branch === managedBranch
+        );
+        return matchingSheets && matchingSheets.length > 0;
+      });
+
+      result = filteredWorkbooks.map((wb) => {
+        const matchingSheets = wb.sheets?.filter(
+          (s) => s.branch === managedBranch
+        );
+        return {
+          lecturerId: wb.lecturerId._id,
+          lecturerName: wb.lecturerId.name,
+          lecturerEmail: wb.lecturerId.email,
+          sheets: matchingSheets,
+          lastEmailSentAt: wb.lastEmailSentAt,
+          createdAt: wb.createdAt,
+          updatedAt: wb.updatedAt,
+        };
+      });
+    } else {
+      // Executive Office (or any other role): preserve current behavior
+      result = workbooks
+        .filter((wb) => wb.sheets && wb.sheets.length > 0 && wb.lecturerId)
+        .map((wb) => ({
+          lecturerId: wb.lecturerId._id,
+          lecturerName: wb.lecturerId.name,
+          lecturerEmail: wb.lecturerId.email,
+          sheets: wb.sheets,
+          lastEmailSentAt: wb.lastEmailSentAt,
+          createdAt: wb.createdAt,
+          updatedAt: wb.updatedAt,
+        }));
+    }
 
     res.json({ success: true, data: result });
   } catch (error) {

@@ -7,8 +7,8 @@ const {
   updateMark, updateStudentNcukId, toggleTestApproval, syncMarks, getAllWorkbooks,
 } = require('../controllers/workbookController');
 
-// Executive Office: view all lecturers' workbooks (read-only)
-router.get('/all', protect, authorizeRole('Executive Office'), getAllWorkbooks);
+// Executive Office or Academic Manager: view all workbooks (read-only)
+router.get('/all', protect, authorizeRole('Executive Office', 'Academic Manager'), getAllWorkbooks);
 
 router.get('/', protect, getWorkbook);
 router.post('/sheets', protect, addSheet);

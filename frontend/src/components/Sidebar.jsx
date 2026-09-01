@@ -32,6 +32,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const amNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
     { to: '/attendance-approval', icon: FiCheckCircle, label: 'Attendance Approval' },
+    { to: '/executive-marks', icon: FiEye, label: 'Marks Review' },
     { to: '/settings', icon: FiSettings, label: 'Settings' },
   ];
 

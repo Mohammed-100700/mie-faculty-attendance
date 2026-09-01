@@ -3,9 +3,11 @@ import {
   FiBookOpen, FiUsers, FiChevronDown, FiChevronUp, FiSearch,
 } from 'react-icons/fi';
 import { getAllWorkbooks } from '../api/workbookApi';
+import { useAuth } from '../context/AuthContext';
 import { exportIndividualPdf, exportClassPdf } from '../utils/exportMarksPdf';
 
 const ExecutiveMarks = () => {
+  const { user } = useAuth();
   const [workbooks, setWorkbooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,11 +15,26 @@ const ExecutiveMarks = () => {
   const [activeSheet, setActiveSheet] = useState({});
   const [lecturerSearch, setLecturerSearch] = useState('');
   const [studentSearch, setStudentSearch] = useState({});
+  const isExecutive = user?.role === 'Executive Office';
+  const isAcademicManager = user?.role === 'Academic Manager';
+  const managedBranch = user?.managedBranch;
 
   const fetchWorkbooks = async () => {
     try {
       const res = await getAllWorkbooks();
-      setWorkbooks(res.data.data || []);
+      let fetchedWorkbooks = res.data.data || [];
+
+      // Academic Manager: filter to only sheets matching their managedBranch
+      if (isAcademicManager && managedBranch) {
+        fetchedWorkbooks = fetchedWorkbooks.filter((wb) => {
+          const matchingSheets = wb.sheets?.filter(
+            (s) => s.branch === managedBranch
+          );
+          return matchingSheets && matchingSheets.length > 0;
+        });
+      }
+
+      setWorkbooks(fetchedWorkbooks);
     } catch (err) {
       console.error('Failed to fetch workbooks:', err);
       setError(err.response?.data?.message || 'Failed to load marks data.');
@@ -50,7 +67,13 @@ const ExecutiveMarks = () => {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Marks Review</h1>
-        <p className="text-gray-500">View marks sheets from all lecturers (read-only)</p>
+        <p className="text-gray-500">
+          {isExecutive
+            ? 'View marks sheets from all lecturers (read-only)'
+            : isAcademicManager
+            ? `View marks sheets for ${managedBranch} branch (read-only)`
+            : 'View marks sheets (read-only)'}
+        </p>
       </div>
 
       {/* Error */}
@@ -177,7 +200,7 @@ const ExecutiveMarks = () => {
                         </div>
 
                         {/* Export actions */}
-                        {sheet.students.length > 0 && sheet.tests.length > 0 && (
+                        {(isExecutive || isAcademicManager) && (sheet.students.length > 0 && sheet.tests.length > 0) && (
                           <div className="flex items-center gap-2 mt-3">
                             <button
                               onClick={() => exportClassPdf({
@@ -295,16 +318,18 @@ const ExecutiveMarks = () => {
                                       );
                                     })}
                                     <td className="py-2 px-3 text-center">
-                                      <button
-                                        onClick={() => exportIndividualPdf({
-                                          student,
-                                          sheet,
-                                          lecturerName: wb.lecturerName
-                                        })}
-                                        className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                      >
-                                        PDF
-                                      </button>
+                                      {(isExecutive || isAcademicManager) && (
+                                        <button
+                                          onClick={() => exportIndividualPdf({
+                                            student,
+                                            sheet,
+                                            lecturerName: wb.lecturerName
+                                          })}
+                                          className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                        >
+                                          PDF
+                                        </button>
+                                      )}
                                     </td>
                                   </tr>
                                 ))}
