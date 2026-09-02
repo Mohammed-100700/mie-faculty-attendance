@@ -106,8 +106,20 @@ const addTest = async (req, res, next) => {
     }
     let maxMarks = req.body.maxMarks ? parseInt(req.body.maxMarks) : 100;
     if (isNaN(maxMarks) || maxMarks < 1 || maxMarks > 1000) maxMarks = 100;
+
+    // Validate assessmentDate — required for new assessments
+    let assessmentDate = null;
+    if (!req.body.assessmentDate) {
+      return res.status(400).json({ success: false, message: 'Assessment date is required.' });
+    }
+    const parsedDate = new Date(req.body.assessmentDate);
+    if (isNaN(parsedDate)) {
+      return res.status(400).json({ success: false, message: 'Invalid assessment date.' });
+    }
+    assessmentDate = parsedDate;
+
     const colIndex = sheet.tests.length + 1;
-    sheet.tests.push({ name: cleanName, colIndex, maxMarks, approved: false, approvedAt: null });
+    sheet.tests.push({ name: cleanName, colIndex, maxMarks, approved: false, approvedAt: null, assessmentDate });
     // Add mark entry for this test to all existing students
     for (const student of sheet.students) {
       student.marks.push({ colIndex, value: '' });

@@ -6,6 +6,12 @@ import { getAllWorkbooks } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
 import { exportIndividualPdf, exportClassPdf } from '../utils/exportMarksPdf';
 
+const formatDate = (date) => {
+  if (!date) return '';
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  return new Date(date).toLocaleDateString('en-GB', options);
+};
+
 const ExecutiveMarks = () => {
   const { user } = useAuth();
   const [workbooks, setWorkbooks] = useState([]);
@@ -231,6 +237,9 @@ const ExecutiveMarks = () => {
                                   }`}
                                 >
                                   <span className="font-medium">{test.name}</span>
+                                  {test.assessmentDate && (
+                                    <span className="text-xs text-gray-400 ml-1">• {formatDate(test.assessmentDate)}</span>
+                                  )}
                                   <span className="text-xs text-gray-400 ml-1">/ {test.maxMarks || 100}</span>
                                   {test.approved && (
                                     <span className="ml-2 text-xs text-green-600 font-medium">✓ Approved</span>
@@ -287,6 +296,11 @@ const ExecutiveMarks = () => {
                                       }`}
                                     >
                                       <div>{test.name}</div>
+                                      {test.assessmentDate && (
+                                        <div className="text-xs font-normal text-gray-400 mt-0.5">
+                                          {formatDate(test.assessmentDate)}
+                                        </div>
+                                      )}
                                       <div className="text-xs font-normal text-gray-400 mt-0.5">
                                         out of {test.maxMarks || 100}
                                       </div>

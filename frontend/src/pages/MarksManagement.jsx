@@ -43,6 +43,7 @@ const MarksManagement = () => {
   // Inline forms
   const [newTestName, setNewTestName] = useState('');
   const [newTestMaxMarks, setNewTestMaxMarks] = useState(100);
+  const [newTestDate, setNewTestDate] = useState('');
   const [showAddTest, setShowAddTest] = useState(false);
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentNcukId, setNewStudentNcukId] = useState('');
@@ -51,6 +52,13 @@ const MarksManagement = () => {
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' }); // key: 'name' | 'ncukId'
+
+  // Date formatting helper — convert ISO Date to human-readable calendar date
+  const formatDate = (date) => {
+    if (!date) return '';
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return new Date(date).toLocaleDateString('en-GB', options);
+  };
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -116,12 +124,17 @@ const MarksManagement = () => {
 
   const handleAddTest = async () => {
     if (!newTestName.trim()) return;
+    if (!newTestDate.trim()) {
+      showToast('Assessment date is required', 'error');
+      return;
+    }
     try {
       const maxMarks = newTestMaxMarks && newTestMaxMarks > 0 ? parseInt(newTestMaxMarks) : 100;
-      const res = await addTest(activeSheet, newTestName.trim(), maxMarks);
+      const res = await addTest(activeSheet, newTestName.trim(), maxMarks, newTestDate.trim());
       setWorkbook(res.data.data);
       setNewTestName('');
       setNewTestMaxMarks(100);
+      setNewTestDate('');
       setShowAddTest(false);
       showToast(`Test "${newTestName}" (out of ${maxMarks}) added!`);
     } catch { showToast('Failed to add test', 'error'); }
@@ -436,6 +449,10 @@ const MarksManagement = () => {
                     <label className="label">Max Marks</label>
                     <input type="number" value={newTestMaxMarks} onChange={(e) => setNewTestMaxMarks(e.target.value)} className="input-field text-sm py-1 px-2 w-20" placeholder="100" min="1" />
                   </div>
+                  <div>
+                    <label className="label">Assessment Date</label>
+                    <input type="date" value={newTestDate} onChange={(e) => setNewTestDate(e.target.value)} className="input-field text-sm py-1 px-2 w-20" />
+                  </div>
                   <button onClick={handleAddTest} className="btn-primary text-xs py-1.5 px-3">Add</button>
                   <button onClick={() => { setShowAddTest(false); setNewTestName(''); setNewTestMaxMarks(100); }} className="btn-secondary text-xs py-1.5 px-2">Cancel</button>
                 </div>
@@ -458,6 +475,9 @@ const MarksManagement = () => {
                       {test.approved ? <FiCheckSquare className="w-4 h-4 text-green-600" /> : <FiSquare className="w-4 h-4 text-gray-400" />}
                     </button>
                     <span className={`font-medium ${test.approved ? 'text-green-700' : 'text-gray-700'}`}>{test.name}</span>
+                    {test.assessmentDate && (
+                      <span className="text-xs text-gray-500 ml-1">• {formatDate(test.assessmentDate)}</span>
+                    )}
                     <span className="text-xs text-gray-400 ml-1">/ {test.maxMarks || 100}</span>
                     <button onClick={() => handleDeleteTest(idx)} className="text-gray-400 hover:text-red-500 ml-1"><FiX className="w-3.5 h-3.5" /></button>
                   </div>

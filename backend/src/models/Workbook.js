@@ -13,6 +13,7 @@ const sheetSchema = new mongoose.Schema({
       maxMarks: { type: Number, default: 100 },
       approved: { type: Boolean, default: false },
       approvedAt: { type: Date, default: null },
+      assessmentDate: { type: Date, default: null },
     },
   ],
   students: [

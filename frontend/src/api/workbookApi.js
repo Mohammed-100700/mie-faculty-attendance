@@ -3,7 +3,7 @@ import api from './axios';
 export const getWorkbook = () => api.get('/workbook');
 export const addSheet = (batch, branch, subject, year) => api.post('/workbook/sheets', { batch, branch, subject, year });
 export const deleteSheet = (sheetIndex) => api.delete(`/workbook/sheets/${sheetIndex}`);
-export const addTest = (sheetIndex, testName, maxMarks) => api.post(`/workbook/sheets/${sheetIndex}/tests`, { testName, maxMarks });
+export const addTest = (sheetIndex, testName, maxMarks, assessmentDate) => api.post(`/workbook/sheets/${sheetIndex}/tests`, { testName, maxMarks, assessmentDate });
 export const deleteTest = (sheetIndex, testIndex) => api.delete(`/workbook/sheets/${sheetIndex}/tests/${testIndex}`);
 export const addStudent = (sheetIndex, name, ncukId) => api.post(`/workbook/sheets/${sheetIndex}/students`, { name, ncukId });
 export const deleteStudent = (sheetIndex, studentIndex) => api.delete(`/workbook/sheets/${sheetIndex}/students/${studentIndex}`);
