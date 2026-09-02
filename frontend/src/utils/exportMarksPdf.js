@@ -5,6 +5,17 @@ function sanitizeFilename(value) {
   return String(value).replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
+function formatAssessmentDate(dateValue) {
+  if (!dateValue) return '-';
+  const d = typeof dateValue === 'string' ? new Date(dateValue) : dateValue;
+  if (isNaN(d)) return '-';
+  const utcDay = d.getUTCDate();
+  const utcMonth = d.getUTCMonth();
+  const utcYear = d.getUTCFullYear();
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${utcDay} ${monthNames[utcMonth]} ${utcYear}`;
+}
+
 // Helper: render individual report header + student info.
 // Returns the Y position after the header area so callers can position content below it.
 function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, year, branch, batch, lecturer, assessments) {
@@ -24,7 +35,7 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
       m.value !== undefined && m.value !== null ? String(m.value) : '';
   });
 
-  // Calculate valid assessments (those with marks entered) and their max marks
+// Calculate valid assessments (those with marks entered) and their max marks
   const validAssessments = [];
   let totalObtained = 0;
   let totalMaximum = 0;
@@ -33,14 +44,15 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
     const markValue = markMap[test.colIndex];
     const maxMarks = test.maxMarks || 0;
 
-    if (markValue !== '' && markValue !== undefined && markValue !== '—') {
+    if (markValue !== '' && markValue !== null && markValue !== undefined) {
       const obtained = parseFloat(markValue);
       if (!isNaN(obtained)) {
         validAssessments.push({
           name: test.name,
           maxMarks,
           obtained,
-        });
+          assessmentDate: test.assessmentDate,
+});
         totalObtained += obtained;
         totalMaximum += maxMarks;
       }
@@ -176,6 +188,7 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
 
   const tableRows = validAssessments.map((asm) => [
     asm.name,
+    formatAssessmentDate(asm.assessmentDate),
     asm.obtained.toFixed(1),
     asm.maxMarks,
     ((asm.obtained / asm.maxMarks) * 100).toFixed(1),
@@ -183,7 +196,7 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
 
   autoTable(doc, {
     startY: tableStartY + 2,
-    head: [['Assessment', 'Marks Obtained', 'Maximum Marks', 'Percentage']],
+    head: [['Assessment', 'Date', 'Marks Obtained', 'Maximum Marks', 'Percentage']],
     body: tableRows,
     theme: 'striped',
     headStyles: {
@@ -205,10 +218,11 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
       fillColor: [248, 250, 252],
     },
     columnStyles: {
-      0: { cellWidth: 48, halign: 'left' },
-      1: { cellWidth: 32, halign: 'center' },
+      0: { cellWidth: 35, halign: 'left' },
+      1: { cellWidth: 25, halign: 'center' },
       2: { cellWidth: 32, halign: 'center' },
-      3: { cellWidth: 28, halign: 'center' },
+      3: { cellWidth: 32, halign: 'center' },
+      4: { cellWidth: 28, halign: 'center' },
     },
   });
 
@@ -460,6 +474,49 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
     doc.text(block.value, bx + blockW / 2, summaryY + 12, { align: 'center' });
   });
 
+  // ---- ASSESSMENT DETAILS ----
+  const detailsStartY = summaryY + 20;
+  const detailsHeaders = ['Assessment', 'Date', 'Maximum Marks'];
+  const detailsRows = tests.map((test) => [
+    test.name,
+    formatAssessmentDate(test.assessmentDate),
+    test.maxMarks,
+  ]);
+
+  autoTable(doc, {
+    startY: detailsStartY,
+    head: [detailsHeaders],
+    body: detailsRows,
+    theme: 'striped',
+    headStyles: {
+      fillColor: [37, 99, 235],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 7,
+      cellPadding: 3,
+    },
+    styles: {
+      fontSize: 7,
+      cellPadding: 3,
+      halign: 'center',
+      textColor: [40, 40, 40],
+      lineColor: [220, 225, 232],
+      lineWidth: 0.2,
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],
+    },
+    columnStyles: {
+      0: { cellWidth: 100, halign: 'left' },
+      1: { cellWidth: 35, halign: 'center' },
+      2: { cellWidth: 25, halign: 'center' },
+    },
+  });
+
+  const detailsFinalY = Number.isFinite(doc.lastAutoTable?.finalY)
+    ? doc.lastAutoTable.finalY
+    : detailsStartY + 20;
+
   // ---- MARKS TABLE ----
   // Build column headers with max marks
   const columnHeaders = tests.map((test) => `${test.name} (${test.maxMarks || 100})`);
@@ -508,7 +565,7 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
   // Table headers: Student Name, NCUK ID, then assessment columns, then Overall %
   const headers = ['Student Name', 'NCUK ID'].concat(columnHeaders).concat(['Overall %']);
 
-  const tableStartY = summaryY + 26;
+  const tableStartY = detailsFinalY + 10;
 
   autoTable(doc, {
     startY: tableStartY,
