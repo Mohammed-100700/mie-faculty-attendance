@@ -58,6 +58,14 @@ const register = async (req, res, next) => {
       role: role || 'Lecturer',
     };
 
+    // Public registration must never create a Super Admin
+    if (role === 'Super Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Public registration cannot create a Super Admin account.',
+      });
+    }
+
     if (role === 'Academic Manager' && managedBranch) {
       userData.managedBranch = managedBranch;
     }
@@ -106,6 +114,14 @@ const login = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
+      });
+    }
+
+    // Block inactive users from logging in
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive. Please contact support.',
       });
     }
 

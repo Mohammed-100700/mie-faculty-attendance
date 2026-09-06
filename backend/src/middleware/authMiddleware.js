@@ -29,6 +29,14 @@ const protect = async (req, res, next) => {
       });
     }
 
+    // Block inactive users from protected requests
+    if (req.user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive. Please contact support.',
+      });
+    }
+
     next();
   } catch (error) {
     return res.status(401).json({
