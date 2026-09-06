@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { getUsers } from '../api/adminApi';
+import { getUsers, updateStatus } from '../api/adminApi';
 import AddUserModal from '../components/admin/AddUserModal';
 import EditUserModal from '../components/admin/EditUserModal';
+import StatusMenu from '../components/admin/StatusMenu';
+import ResetPasswordModal from '../components/admin/ResetPasswordModal';
+import StatusConfirmModal from '../components/admin/StatusConfirmModal';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState(null);
@@ -26,6 +29,13 @@ const AdminUsers = () => {
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+
+  // [B3.4] Status menu state
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [resetUser, setResetUser] = useState(null);
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+  const [statusError, setStatusError] = useState('');
 
   // Clear route state after consuming it
   useEffect(() => {
@@ -51,6 +61,43 @@ const AdminUsers = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  // [B3.4] Request status change (opens confirmation modal)
+  const requestStatusChange = (user) => {
+    if (user.role === 'Super Admin') return;
+
+    setStatusError('');
+    setStatusTarget({
+      user,
+      newIsActive: !(user.isActive !== false),
+    });
+  };
+
+  // [B3.4] Handle confirmed status change
+  const handleConfirmStatus = async () => {
+    if (!statusTarget) return;
+
+    const { user, newIsActive } = statusTarget;
+
+    if (user.role === 'Super Admin') return;
+
+    try {
+      setStatusUpdatingId(user._id);
+      setStatusError('');
+
+      await updateStatus(user._id, newIsActive);
+      await fetchUsers();
+
+      setStatusTarget(null);
+    } catch (err) {
+      setStatusError(
+        err.response?.data?.message ||
+        'Failed to update user status.'
+      );
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
 
   // Effective role filter
   const matchesRole =
@@ -296,7 +343,49 @@ const AdminUsers = () => {
                   {user.role === 'Super Admin'
                     ? 'Protected account'
                     : user.role === 'Lecturer' || user.role === 'Academic Manager' || user.role === 'Executive Office'
-                      ? <button className="btn-xs btn-primary" onClick={() => setEditingUser(user)}>Edit</button>
+                      ? (
+<div className="inline-flex items-center gap-2 whitespace-nowrap">
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => setEditingUser(user)}
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium ${statusUpdatingId === user._id
+                                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                  : safeIsActive(user)
+                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                    : 'bg-green-600 text-white hover:bg-green-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                onClick={() => requestStatusChange(user)}
+                                disabled={statusUpdatingId === user._id}
+                              >
+                                {statusUpdatingId === user._id
+                                  ? 'Updating...'
+                                  : safeIsActive(user)
+                                    ? 'Deactivate'
+                                    : 'Activate'}
+                              </button>
+
+                              <StatusMenu
+                              isOpen={openMenuId === user._id}
+                              onToggle={() =>
+                                setOpenMenuId((current) =>
+                                  current === user._id ? null : user._id
+                                )
+                              }
+                              onResetPassword={() => {
+                                if (user.role === 'Super Admin') return;
+
+                                setOpenMenuId(null);
+                                setResetUser(user);
+                              }}
+                            />
+                          </div>
+                        )
                       : 'Coming in next step'}
                 </td>
               </tr>
@@ -320,6 +409,34 @@ const AdminUsers = () => {
         fetchUsers();
         setShowCreate(false);
       }} />}
+
+      {statusTarget && (
+        <StatusConfirmModal
+          isOpen={!!statusTarget}
+          user={statusTarget.user}
+          newIsActive={statusTarget.newIsActive}
+          submitting={statusUpdatingId === statusTarget.user._id}
+          error={statusError}
+          onConfirm={handleConfirmStatus}
+          onClose={() => {
+            if (!statusUpdatingId) {
+              setStatusTarget(null);
+              setStatusError('');
+            }
+          }}
+        />
+      )}
+
+      {resetUser && (
+        <ResetPasswordModal
+          isOpen={!!resetUser}
+          user={resetUser}
+          onClose={() => setResetUser(null)}
+          onResetSuccess={() => {
+            setResetUser(null);
+          }}
+        />
+      )}
     </div>
   );
 };
