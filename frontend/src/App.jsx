@@ -2,8 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
-
-// Pages
+import AdminDashboard from './pages/AdminDashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -61,6 +60,19 @@ function App() {
             <Route path="executive-dashboard" element={<ExecutiveDashboard />} />
             <Route path="executive-marks" element={<ExecutiveMarks />} />
             <Route path="settings" element={<Settings />} />
+          </Route>
+
+          {/* Admin route - Super Admin only */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['Super Admin']}>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
           </Route>
 
           {/* Catch all */}

@@ -22,8 +22,14 @@ const Login = () => {
 
     try {
       const res = await login(form);
-      loginUser(res.data.data);
-      navigate('/dashboard');
+      const loginData = res.data.data;
+      loginUser(loginData);
+
+      if (loginData.role === 'Super Admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {
