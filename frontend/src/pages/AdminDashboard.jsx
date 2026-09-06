@@ -174,7 +174,7 @@ const AdminDashboard = () => {
       {/* Quick Actions */}
       <div className="mt-8 pt-8 border-t border-gray-200">
         <h2 className="text-sm font-medium text-gray-500 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-4">
+<div className="grid grid-cols-2 gap-4">
           <button
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
             onClick={() => navigate('/admin/users')}
@@ -183,8 +183,8 @@ const AdminDashboard = () => {
             <span>Manage Users</span>
           </button>
           <button
-            disabled
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
+            onClick={() => navigate('/admin/users', { state: { openCreate: true } })}
           >
             <FiPlus className="w-4 h-4" />
             <span>Add User</span>

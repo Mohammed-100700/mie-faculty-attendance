@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FiUsers, FiUserCheck, FiUserX, FiShield } from 'react-icons/fi';
-import { getUsers } from '../api/adminApi';
+import { getUsers, createUser } from '../api/adminApi';
+import AddUserModal from '../components/admin/AddUserModal';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState(null);
@@ -20,20 +21,40 @@ const AdminUsers = () => {
   // Safe active semantics
   const safeIsActive = (user) => user.isActive !== false;
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const res = await getUsers();
-        setUsers(res.data.data);
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to load users.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Route state: openCreate from dashboard
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showCreate, setShowCreate] = useState(false);
 
+  // Clear route state after consuming it
+  useEffect(() => {
+    if (location.state?.openCreate === true) {
+      setShowCreate(true);
+      // Clear the state so refresh does not reopen modal
+      navigate('/admin/users', { replace: true });
+    }
+  }, [location.state, navigate]);
+
+  // Initial user fetch on page load
+  const fetchUsers = async () => {
+    try {
+      const res = await getUsers();
+      setUsers(res.data.data);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load users.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchUsers();
   }, []);
+
+  // Effective role filter
+  const matchesRole =
+    roleFilter === 'All' ||
+    users?.some((user) => user.role === normalizedRoleFilter);
 
   // Filtered users
   const filteredUsers = users?.filter((user) => {
@@ -43,7 +64,7 @@ const AdminUsers = () => {
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // Role filter: exact matching against normalized role
+    // Role filter
     const matchesRole =
       roleFilter === 'All' ||
       user.role === normalizedRoleFilter;
@@ -143,11 +164,23 @@ const AdminUsers = () => {
         <p className="text-gray-600">Manage system users</p>
       </div>
 
-      {/* Top action: Back to Dashboard */}
-      <div className="mb-4">
+      {/* Top actions: Back to Dashboard + Add User */}
+      <div className="flex justify-between mb-6">
         <Link to="/admin" className="btn-secondary">
           Back to Dashboard
         </Link>
+        {showCreate ? (
+          <button onClick={() => setShowCreate(false)} className="btn-link text-primary hover:text-primary-700">
+            Cancel
+          </button>
+        ) : (
+          <button
+            onClick={() => navigate('/admin/users', { state: { openCreate: true } })}
+            className="btn-primary"
+          >
+            Add User
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -198,7 +231,7 @@ const AdminUsers = () => {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table - exactly six columns: Name, Email, Role, Assignment, Status, Actions */}
       <div className="bg-white rounded-xl overflow-shadow shadow-sm border border-gray-200">
         <table className="min-w-full divide-y divide-gray-200">
           <thead>
@@ -230,44 +263,49 @@ const AdminUsers = () => {
                   No users found.
                 </td>
               </tr>
-              ) : filteredUsers.map((user) => (
-                <tr key={user._id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-4 text-sm text-gray-700">
-                    <p className="font-medium text-gray-900">{user.name}</p>
-                  </td>
+            ) : filteredUsers.map((user) => (
+              <tr key={user._id} className="border-b border-gray-200 hover:bg-gray-50">
+                <td className="px-4 py-4 text-sm text-gray-700">
+                  <p className="font-medium text-gray-900">{user.name}</p>
+                </td>
 
-                  <td className="px-4 py-4 text-sm text-gray-700">
-                    <span className="text-gray-600">{user.email}</span>
-                  </td>
+                <td className="px-4 py-4 text-sm text-gray-700">
+                  <span className="text-gray-600">{user.email}</span>
+                </td>
 
-                  <td className="px-4 py-4 text-sm text-gray-700">
-                    <span className="font-medium text-gray-900">
-                      {roleDisplay(user.role)}
-                    </span>
-                  </td>
+                <td className="px-4 py-4 text-sm text-gray-700">
+                  <span className="font-medium text-gray-900">
+                    {roleDisplay(user.role)}
+                  </span>
+                </td>
 
-                  <td className="px-4 py-4 text-sm text-gray-700">
-                    {getAssignmentContent(user)}
-                  </td>
+                <td className="px-4 py-4 text-sm text-gray-700">
+                  {getAssignmentContent(user)}
+                </td>
 
-                  <td className="px-4 py-4 text-sm text-gray-700">
-                    <span
-                      className={`inline-block px-2 py-1 rounded text-xs font-medium ${statusBadgeClass(user)}`}
-                    >
-                      {statusLabel(user)}
-                    </span>
-                  </td>
+                <td className="px-4 py-4 text-sm text-gray-700">
+                  <span
+                    className={`inline-block px-2 py-1 rounded text-xs font-medium ${statusBadgeClass(user)}`}
+                  >
+                    {statusLabel(user)}
+                  </span>
+                </td>
 
-                  <td className="px-4 py-4 text-xs text-gray-500">
-                    {user.role === 'Super Admin'
-                      ? 'Protected account'
-                      : 'Coming in next step'}
-                  </td>
-                </tr>
-              ))}
+                <td className="px-4 py-4 text-xs text-gray-500">
+                  {user.role === 'Super Admin'
+                    ? 'Protected account'
+                    : 'Coming in next step'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+
+      {showCreate && <AddUserModal isOpen={showCreate} onClose={() => setShowCreate(false)} onCreated={() => {
+        fetchUsers();
+        setShowCreate(false);
+      }} />}
     </div>
   );
 };
