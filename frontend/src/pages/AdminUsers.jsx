@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiUsers, FiUserCheck, FiUserX, FiShield } from 'react-icons/fi';
-import { getUsers, createUser } from '../api/adminApi';
+import { getUsers } from '../api/adminApi';
 import AddUserModal from '../components/admin/AddUserModal';
+import EditUserModal from '../components/admin/EditUserModal';
 
 const AdminUsers = () => {
   const [users, setUsers] = useState(null);
@@ -25,6 +25,7 @@ const AdminUsers = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
 
   // Clear route state after consuming it
   useEffect(() => {
@@ -294,13 +295,26 @@ const AdminUsers = () => {
                 <td className="px-4 py-4 text-xs text-gray-500">
                   {user.role === 'Super Admin'
                     ? 'Protected account'
-                    : 'Coming in next step'}
+                    : user.role === 'Lecturer' || user.role === 'Academic Manager' || user.role === 'Executive Office'
+                      ? <button className="btn-xs btn-primary" onClick={() => setEditingUser(user)}>Edit</button>
+                      : 'Coming in next step'}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {editingUser && (
+        <EditUserModal
+          isOpen={!!editingUser}
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onUpdated={async () => {
+            await fetchUsers();
+          }}
+        />
+      )}
 
       {showCreate && <AddUserModal isOpen={showCreate} onClose={() => setShowCreate(false)} onCreated={() => {
         fetchUsers();
