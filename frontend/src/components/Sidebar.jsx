@@ -45,6 +45,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const superAdminNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: true },
+    { to: '/admin/users', icon: FiUser, label: 'Users', end: false },
   ];
 
   let navItems = lecturerNavItems;

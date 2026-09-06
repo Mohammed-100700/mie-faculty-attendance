@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FiUsers, FiUserCheck, FiUserX, FiBookOpen, FiMapPin, FiBriefcase, FiShield, FiUserPlus, FiPlus } from 'react-icons/fi';
 import { getDashboard } from '../api/adminApi';
+import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -175,8 +176,8 @@ const AdminDashboard = () => {
         <h2 className="text-sm font-medium text-gray-500 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-4">
           <button
-            disabled
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
+            onClick={() => navigate('/admin/users')}
           >
             <FiUserPlus className="w-4 h-4" />
             <span>Manage Users</span>
