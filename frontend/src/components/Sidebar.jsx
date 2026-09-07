@@ -19,28 +19,33 @@ const Sidebar = ({ isOpen, onClose }) => {
   const { user, logoutUser } = useAuth();
 
   const lecturerNavItems = [
-    { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { to: '/start-session', icon: FiPlay, label: 'Start Session' },
-    { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance' },
-    { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In' },
-    { to: '/my-logs', icon: FiList, label: 'My Attendance' },
-    { to: '/marks', icon: FiClipboard, label: 'Marks Management' },
-    { to: '/profile', icon: FiUser, label: 'Profile' },
-    { to: '/settings', icon: FiSettings, label: 'Settings' },
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: false },
+    { to: '/start-session', icon: FiPlay, label: 'Start Session', end: false },
+    { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance', end: false },
+    { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In', end: false },
+    { to: '/my-logs', icon: FiList, label: 'My Attendance', end: false },
+    { to: '/marks', icon: FiClipboard, label: 'Marks Management', end: false },
+    { to: '/profile', icon: FiUser, label: 'Profile', end: false },
+    { to: '/settings', icon: FiSettings, label: 'Settings', end: false },
   ];
 
   const amNavItems = [
-    { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { to: '/attendance-approval', icon: FiCheckCircle, label: 'Attendance Approval' },
-    { to: '/executive-marks', icon: FiEye, label: 'Marks Review' },
-    { to: '/settings', icon: FiSettings, label: 'Settings' },
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: false },
+    { to: '/attendance-approval', icon: FiCheckCircle, label: 'Attendance Approval', end: false },
+    { to: '/executive-marks', icon: FiEye, label: 'Marks Review', end: false },
+    { to: '/settings', icon: FiSettings, label: 'Settings', end: false },
   ];
 
   const executiveNavItems = [
-    { to: '/dashboard', icon: FiHome, label: 'Dashboard' },
-    { to: '/executive-dashboard', icon: FiBarChart2, label: 'Attendance Reports' },
-    { to: '/executive-marks', icon: FiEye, label: 'Marks Review' },
-    { to: '/settings', icon: FiSettings, label: 'Settings' },
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: false },
+    { to: '/executive-dashboard', icon: FiBarChart2, label: 'Attendance Reports', end: false },
+    { to: '/executive-marks', icon: FiEye, label: 'Marks Review', end: false },
+    { to: '/settings', icon: FiSettings, label: 'Settings', end: false },
+  ];
+
+  const superAdminNavItems = [
+    { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: true },
+    { to: '/admin/users', icon: FiUser, label: 'Users', end: false },
   ];
 
   let navItems = lecturerNavItems;
@@ -51,6 +56,9 @@ const Sidebar = ({ isOpen, onClose }) => {
   } else if (user?.role === 'Executive Office') {
     navItems = executiveNavItems;
     portalLabel = 'Executive Office';
+  } else if (user?.role === 'Super Admin') {
+    navItems = superAdminNavItems;
+    portalLabel = 'System Administrator';
   }
 
   return (
@@ -90,6 +98,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               className={({ isActive }) =>
                 `sidebar-link ${isActive ? 'active' : ''}`
               }
+              end={item.end}
             >
               <item.icon className="w-5 h-5" />
               <span className="text-sm">{item.label}</span>
