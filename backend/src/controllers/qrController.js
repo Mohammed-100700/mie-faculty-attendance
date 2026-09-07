@@ -7,10 +7,18 @@ const generateQR = async (req, res, next) => {
   try {
     const { branch } = req.body;
 
-    if (!branch || !['Dhanmondi', 'Uttara'].includes(branch)) {
+    if (!branch) {
       return res.status(400).json({
         success: false,
-        message: 'Valid branch (Dhanmondi or Uttara) is required.',
+        message: 'Branch is required.',
+      });
+    }
+
+    const branchExists = await Branch.findOne({ name: branch, isActive: true });
+    if (!branchExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid active branch is required.',
       });
     }
 

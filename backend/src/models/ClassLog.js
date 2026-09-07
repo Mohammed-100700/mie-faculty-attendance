@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const entrySchema = new mongoose.Schema(
   {
-    branch: { type: String, enum: ['Dhanmondi', 'Uttara'], required: true },
+    branch: { type: String, required: true },
     classes: { type: Number, required: true, min: 1 },
     approvalStatus: {
       type: String,

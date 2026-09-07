@@ -5,7 +5,6 @@ const qrTokenSchema = new mongoose.Schema(
     branch: {
       type: String,
       required: [true, 'Branch is required'],
-      enum: ['Dhanmondi', 'Uttara'],
     },
     token: {
       type: String,

@@ -38,7 +38,7 @@ const userSchema = new mongoose.Schema(
     branches: [
       {
         type: String,
-        enum: ['Dhanmondi', 'Uttara'],
+        trim: true,
       },
     ],
     subjects: [
@@ -58,7 +58,7 @@ const userSchema = new mongoose.Schema(
     // Branch this Academic Manager oversees (null for Lecturers)
     managedBranch: {
       type: String,
-      enum: ['Dhanmondi', 'Uttara', null],
+      trim: true,
       default: null,
     },
     // Email settings for sending marks
