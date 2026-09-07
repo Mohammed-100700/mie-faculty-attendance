@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiMail, FiLock, FiUser, FiPhone, FiMapPin, FiBook } from 'react-icons/fi';
 import { register } from '../api/authApi';
+import { getBranches } from '../api/branchApi';
 import { getSubjects } from '../api/subjectApi';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,6 +18,7 @@ const Register = () => {
     role: 'Lecturer',
   });
   const [availableSubjects, setAvailableSubjects] = useState([]);
+  const [availableBranches, setAvailableBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -31,7 +33,16 @@ const Register = () => {
         // Non-critical: subjects list will be empty
       }
     };
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+        setAvailableBranches(res.data.data);
+      } catch {
+        // Non-critical: branches list will be empty
+      }
+    };
     fetchSubjects();
+    fetchBranches();
   }, []);
 
   const handleChange = (e) => {
@@ -109,27 +120,20 @@ const Register = () => {
             {/* Role Selection */}
             <div>
               <label className="label">Register As</label>
-              <div className="flex gap-2 flex-wrap">
-                {['Lecturer', 'Academic Manager', 'Executive Office'].map((r) => (
-                  <label
-                    key={r}
-                    className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                      form.role === r
-                        ? 'bg-primary-50 border-primary-300 text-primary-70'
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value={r}
-                      checked={form.role === r}
-                      onChange={handleChange}
-                      className="sr-only"
-                    />
-                    <span className="text-sm">{r}</span>
-                  </label>
-                ))}
+              <div className="flex gap-2">
+                <label
+                  className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors bg-primary-50 border-primary-300 text-primary-70`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value="Lecturer"
+                    checked={form.role === 'Lecturer'}
+                    onChange={handleChange}
+                    className="sr-only"
+                  />
+                  <span className="text-sm">Lecturer</span>
+                </label>
               </div>
             </div>
 
@@ -175,22 +179,27 @@ const Register = () => {
             </div>
 
             {/* Branch selection for Lecturers */}
-            {form.role === 'Lecturer' && (
+            {form.role === 'Lecturer' && availableBranches.length > 0 && (
               <div>
                 <label className="label">Branches You Teach At</label>
                 <div className="flex gap-3">
-                  {['Dhanmondi', 'Uttara'].map((branch) => (
+                  {availableBranches.map((branch) => (
                     <label
-                      key={branch}
+                      key={branch.name}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
-                        form.branches.includes(branch)
+                        form.branches.includes(branch.name)
                           ? 'bg-primary-50 border-primary-300 text-primary-700'
                           : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                       }`}
                     >
-                      <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
+                      <input
+                        type="checkbox"
+                        checked={form.branches.includes(branch.name)}
+                        onChange={() => handleBranchToggle(branch.name)}
+                        className="sr-only"
+                      />
                       <FiMapPin className="w-4 h-4" />
-                      {branch}
+                      <span className="truncate">{branch.name}</span>
                     </label>
                   ))}
                 </div>
@@ -219,36 +228,6 @@ const Register = () => {
                       />
                       <FiBook className="w-4 h-4 flex-shrink-0" />
                       <span className="truncate">{subject.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Managed Branch for Academic Managers */}
-            {form.role === 'Academic Manager' && (
-              <div>
-                <label className="label">Branch You Manage</label>
-                <div className="flex gap-3">
-                  {['Dhanmondi', 'Uttara'].map((branch) => (
-                    <label
-                      key={branch}
-                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        form.managedBranch === branch
-                          ? 'bg-primary-50 border-primary-300 text-primary-700'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="managedBranch"
-                        value={branch}
-                        checked={form.managedBranch === branch}
-                        onChange={handleChange}
-                        className="sr-only"
-                      />
-                      <FiMapPin className="w-4 h-4" />
-                      {branch}
                     </label>
                   ))}
                 </div>

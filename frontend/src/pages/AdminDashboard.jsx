@@ -184,6 +184,13 @@ const AdminDashboard = () => {
           </button>
           <button
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
+            onClick={() => navigate('/admin/branches')}
+          >
+            <FiMapPin className="w-4 h-4" />
+            <span>Manage Branches</span>
+          </button>
+          <button
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
             onClick={() => navigate('/admin/users', { state: { openCreate: true } })}
           >
             <FiPlus className="w-4 h-4" />

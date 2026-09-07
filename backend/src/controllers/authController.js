@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Subject = require('../models/Subject');
+const Branch = require('../models/Branch');
 const generateToken = require('../utils/generateToken');
 
 // @desc    Register a new user (Lecturer or Academic Manager)
@@ -48,14 +49,33 @@ const register = async (req, res, next) => {
       subjectIds = subjects;
     }
 
+    // Validate branches: must exist in Branch collection and be active
+    let branchIds = [];
+    if (branches && Array.isArray(branches) && branches.length > 0) {
+      for (const branchName of branches) {
+        if (typeof branchName !== 'string') {
+          return res.status(400).json({ success: false, message: `Invalid branch name: ${branchName}` });
+        }
+        const branchDoc = await Branch.findOne({ name: branchName, isActive: true });
+        if (!branchDoc) {
+          return res.status(400).json({ success: false, message: `Valid active branch required. '${branchName}' is not available or is inactive.` });
+        }
+      }
+      branchIds = branches;
+    }
+
+    // Public registration: force role to Lecturer only
+    // Prevent privilege escalation: Super Admin, Academic Manager, Executive Office
+    const publicRole = 'Lecturer';
+
     const userData = {
       name: cleanName,
       email: cleanEmail,
       password,
       phone: (phone || '').trim().substring(0, 20),
-      branches: branches || [],
+      branches: branchIds,
       subjects: subjectIds,
-      role: role || 'Lecturer',
+      role: publicRole,
     };
 
     // Public registration must never create a Super Admin

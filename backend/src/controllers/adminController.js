@@ -387,6 +387,192 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+
+
+// @desc    Get all branches (active + inactive for Super Admin)
+// @route   GET /api/admin/branches
+// @access  Super Admin
+const getAdminBranches = async (req, res, next) => {
+  try {
+    const branches = await Branch.find({}).sort({ name: 1 });
+    res.json({
+      success: true,
+      count: branches.length,
+      data: branches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create a new branch
+// @route   POST /api/admin/branches
+// @access  Super Admin
+const createBranch = async (req, res, next) => {
+  try {
+    const { name, code } = req.body;
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch name is required.',
+      });
+    }
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch code is required.',
+      });
+    }
+
+    // Trim strings
+    const trimmedName = name.trim();
+    const trimmedCode = code.trim().toUpperCase();
+
+    // Prevent duplicate name
+    const duplicateName = await Branch.findOne({ name: trimmedName });
+    if (duplicateName) {
+      return res.status(400).json({
+        success: false,
+        message: 'A branch with this name already exists.',
+      });
+    }
+
+    // Prevent duplicate code
+    const duplicateCode = await Branch.findOne({ code: trimmedCode });
+    if (duplicateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'A branch with this code already exists.',
+      });
+    }
+
+    // isActive defaults to true per Branch model default
+    const branch = await Branch.create({
+      name: trimmedName,
+      code: trimmedCode,
+      isActive: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Branch created successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Edit a branch
+// @route   PUT /api/admin/branches/:id
+// @access  Super Admin
+const updateBranch = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, code } = req.body;
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid branch ID format.',
+      });
+    }
+
+    const branch = await Branch.findById(id);
+
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found.',
+      });
+    }
+
+    // Branch name is IMMUTABLE - only code may be edited
+    // This preserves historical records that reference branch names as strings
+
+    // Edit code only (name is immutable)
+    if (code !== undefined) {
+      const trimmedCode = code.trim().toUpperCase();
+      // Prevent duplicate code (excluding current branch)
+      const duplicateCode = await Branch.findOne({
+        code: trimmedCode,
+        _id: { $ne: branch._id },
+      });
+      if (duplicateCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'A branch with this code already exists.',
+        });
+      }
+      branch.code = trimmedCode;
+    }
+
+    // Name is NOT editable - immutable to preserve historical references
+    // if (name !== undefined) { ... }
+
+    await branch.save();
+
+    res.json({
+      success: true,
+      message: 'Branch code updated successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle branch status (activate/deactivate)
+// @route   PATCH /api/admin/branches/:id/status
+// @access  Super Admin
+const toggleBranchStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    // Validate isActive is boolean
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isActive must be a boolean value.',
+      });
+    }
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid branch ID format.',
+      });
+    }
+
+    const branch = await Branch.findById(id);
+
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found.',
+      });
+    }
+
+    // Toggle status
+    branch.isActive = isActive;
+    await branch.save();
+
+    res.json({
+      success: true,
+      message: 'Branch status updated successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   dashboard,
   getUsers,
@@ -394,4 +580,8 @@ module.exports = {
   updateUser,
   updateStatus,
   resetPassword,
+  getAdminBranches,
+  createBranch,
+  updateBranch,
+  toggleBranchStatus,
 };
