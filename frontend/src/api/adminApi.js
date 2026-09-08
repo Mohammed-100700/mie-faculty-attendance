@@ -30,3 +30,15 @@ export const updateStatus = (id, isActive) => api.patch(`/admin/users/${id}/stat
 // PATCH /api/admin/users/:id/reset-password
 export const resetPassword = (id, temporaryPassword) =>
   api.patch(`/admin/users/${id}/reset-password`, { temporaryPassword });
+
+// GET /api/admin/subjects
+export const getAdminSubjects = () => api.get('/admin/subjects');
+
+// POST /api/admin/subjects
+export const createSubject = (data) => api.post('/admin/subjects', data);
+
+// PUT /api/admin/subjects/:id
+export const updateSubject = (id, data) => api.put(`/admin/subjects/${id}`, data);
+
+// PATCH /api/admin/subjects/:id/status
+export const updateSubjectStatus = (id, isActive) => api.patch(`/admin/subjects/${id}/status`, { isActive });

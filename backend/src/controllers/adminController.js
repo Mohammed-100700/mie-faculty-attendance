@@ -573,6 +573,169 @@ const toggleBranchStatus = async (req, res, next) => {
   }
 };
 
+
+
+// @desc    Get all subjects (active + inactive for Super Admin)
+// @route   GET /api/admin/subjects
+// @access  Super Admin
+const getAdminSubjects = async (req, res, next) => {
+  try {
+    const subjects = await Subject.find({}).sort({ name: 1 });
+    res.json({
+      success: true,
+      count: subjects.length,
+      data: subjects,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create a new subject
+// @route   POST /api/admin/subjects
+// @access  Super Admin
+const createSubject = async (req, res, next) => {
+  try {
+    const { name, programme } = req.body;
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject name is required.',
+      });
+    }
+
+    // Trim name
+    const trimmedName = name.trim();
+
+    // Prevent duplicate name (case-insensitive)
+    const duplicate = await Subject.findOne({ name: new RegExp(`^${trimmedName}$`, 'i') });
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: 'A subject with this name already exists.',
+      });
+    }
+
+    // isActive defaults to true per Subject model default
+    // isDefault must NOT be accepted from client
+    // createdBy is set to null for system-seeded, or we could set it to the Super Admin
+
+    const subject = await Subject.create({
+      name: trimmedName,
+      programme: programme || 'NCUK IFY',
+      isActive: true,
+      isDefault: false,
+      createdBy: null,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Subject created successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Edit a subject
+// @route   PUT /api/admin/subjects/:id
+// @access  Super Admin
+const updateSubject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, programme } = req.body;
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subject ID format.',
+      });
+    }
+
+    const subject = await Subject.findById(id);
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found.',
+      });
+    }
+
+    // SUBJECT NAME IS IMMUTABLE - do not allow renaming
+    // Only programme may be edited
+
+    // Edit programme only (name is immutable)
+    if (programme !== undefined) {
+      const trimmedProg = programme.trim();
+      subject.programme = trimmedProg || 'NCUK IFY';
+    }
+
+    // Name, isDefault, createdBy, isActive are NOT editable through this endpoint
+    // Status has its own separate endpoint
+
+    await subject.save();
+
+    res.json({
+      success: true,
+      message: 'Subject code/name updated successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle subject status (activate/deactivate)
+// @route   PATCH /api/admin/subjects/:id/status
+// @access  Super Admin
+const toggleSubjectStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    // Validate isActive is boolean
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isActive must be a boolean value.',
+      });
+    }
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subject ID format.',
+      });
+    }
+
+    const subject = await Subject.findById(id);
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found.',
+      });
+    }
+
+    // Toggle status
+    subject.isActive = isActive;
+    await subject.save();
+
+    res.json({
+      success: true,
+      message: 'Subject status updated successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   dashboard,
   getUsers,
@@ -584,4 +747,8 @@ module.exports = {
   createBranch,
   updateBranch,
   toggleBranchStatus,
+  getAdminSubjects,
+  createSubject,
+  updateSubject,
+  toggleSubjectStatus,
 };

@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/AdminUsers';
 import AdminBranches from './pages/AdminBranches';
+import AdminSubjects from './pages/AdminSubjects';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -77,6 +78,7 @@ function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="branches" element={<AdminBranches />} />
+            <Route path="subjects" element={<AdminSubjects />} />
           </Route>
 
           {/* Catch all */}

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { updateUser } from '../../api/adminApi';
-import { getSubjects } from '../../api/subjectApi';
+import { updateUser, getAdminSubjects } from '../../api/adminApi';
 import { getBranches } from '../../api/branchApi';
 
 const EditUserModal = ({
@@ -50,8 +49,22 @@ const EditUserModal = ({
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const res = await getSubjects();
-        setSubjectsList(res.data.data);
+        const res = await getAdminSubjects();
+        const allSubjects = res.data.data || [];
+
+        // Show all active subjects plus only this lecturer's
+        // currently assigned inactive subjects.
+        const currentSubjectIds = new Set(
+          normalizedSubjects.map((id) => String(id))
+        );
+
+        const visibleSubjects = allSubjects.filter(
+          (subject) =>
+            subject.isActive !== false ||
+            currentSubjectIds.has(String(subject._id))
+        );
+
+        setSubjectsList(visibleSubjects);
       } catch (err) {
         console.error('Failed to fetch subjects', err);
       }
@@ -336,7 +349,11 @@ const EditUserModal = ({
                         onChange={() => toggleSubject(subject._id)}
                         className="mr-2 accent-color-primary"
                       />
-                      <span className="text-xs text-gray-500 truncate w-24">{subject.name}</span>
+                      <span className="text-xs text-gray-500 truncate w-40">
+                        {subject.isActive === false
+                          ? `${subject.name} (Inactive)`
+                          : subject.name}
+                      </span>
                     </div>
                   ))}
                 </div>

@@ -1,6 +1,8 @@
 const StatusConfirmModal = ({
   isOpen,
   user,
+  branch,
+  subject,
   newIsActive,
   submitting,
   error,
@@ -8,6 +10,36 @@ const StatusConfirmModal = ({
   onClose,
 }) => {
   if (!isOpen) return null;
+
+  let entityType = 'User';
+
+  if (branch) {
+    entityType = 'Branch';
+  } else if (subject) {
+    entityType = 'Subject';
+  }
+
+  const actionTitle = newIsActive
+    ? `Activate ${entityType}`
+    : `Deactivate ${entityType}`;
+
+  const getDescription = () => {
+    if (entityType === 'Branch') {
+      return newIsActive
+        ? 'This branch will become available for new assignments again.'
+        : 'This branch will no longer be available for new assignments. Historical records will remain preserved.';
+    }
+
+    if (entityType === 'Subject') {
+      return newIsActive
+        ? 'This subject will become available for assignments again.'
+        : 'This subject will no longer be available for new assignments. Historical records will remain preserved.';
+    }
+
+    return newIsActive
+      ? 'Activate this user? They will be able to log in again.'
+      : 'Deactivate this user? They will no longer be able to log in.';
+  };
 
   return (
     <div
@@ -18,27 +50,24 @@ const StatusConfirmModal = ({
         }
       }}
     >
-      <div
-        className="w-full max-w-sm bg-white rounded-lg shadow-xl p-6"
-        style={{ transition: 'opacity 0.15s ease, transform 0.15s ease' }}
-      >
+      <div className="w-full max-w-sm bg-white rounded-lg shadow-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium text-gray-900">
-            {newIsActive ? 'Activate User' : 'Deactivate User'}
+            {actionTitle}
           </h3>
+
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            disabled={submitting}
+            className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
           >
             &times;
           </button>
         </div>
 
         <p className="text-sm text-gray-500 mb-6">
-          {newIsActive
-            ? 'Activate this user? They will be able to log in again.'
-            : 'Deactivate this user? They will no longer be able to log in.'}
+          {getDescription()}
         </p>
 
         {error && (
