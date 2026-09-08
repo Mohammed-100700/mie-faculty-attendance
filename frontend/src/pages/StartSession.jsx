@@ -3,12 +3,46 @@ import { useNavigate } from 'react-router-dom';
 import { FiPlay, FiStopCircle, FiCheckCircle, FiCopy, FiUsers } from 'react-icons/fi';
 import QRCode from 'qrcode';
 import { createSession, getSession, closeSession } from '../api/attendanceSessionApi';
+import { getBranches } from '../api/branchApi';
+import { useAuth } from '../context/AuthContext';
 
 const StartSession = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [branch, setBranch] = useState('Dhanmondi');
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [branch, setBranch] = useState('');
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+
+        const assignedBranchNames = new Set(
+          (user?.branches || []).map((branchName) => String(branchName))
+        );
+
+        const branchNames = (res.data.data || [])
+          .filter((item) => assignedBranchNames.has(item.name))
+          .map((item) => item.name);
+
+        setAvailableBranches(branchNames);
+
+        setBranch((current) =>
+          branchNames.includes(current)
+            ? current
+            : branchNames[0] || ''
+        );
+      } catch (err) {
+        console.error('Failed to fetch branches:', err);
+      }
+    };
+
+    if (user) {
+      fetchBranches();
+    }
+  }, [user]);
   const [batch, setBatch] = useState('September');
   const [subject, setSubject] = useState('');
   const [checkinCount, setCheckinCount] = useState(0);
@@ -158,7 +192,7 @@ const StartSession = () => {
           <div>
             <label className="label">Branch <span className="text-red-500">*</span></label>
             <div className="flex gap-3">
-              {['Dhanmondi', 'Uttara'].map((b) => (
+              {availableBranches.map((b) => (
                 <label
                   key={b}
                   className={`flex-1 flex items-center justify-center px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${

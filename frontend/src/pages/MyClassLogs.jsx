@@ -5,11 +5,13 @@ import ClassLogTable from '../components/ClassLogTable';
 import ExportButtons from '../components/ExportButtons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getBranches } from '../api/branchApi';
 
 const MyClassLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [availableBranches, setAvailableBranches] = useState([]);
   const [filters, setFilters] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -17,6 +19,41 @@ const MyClassLogs = () => {
   });
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+
+        const assignedBranchNames = new Set(
+          (user?.branches || []).map((branchName) => String(branchName))
+        );
+
+        const branchNames = (res.data.data || [])
+          .filter((item) => assignedBranchNames.has(item.name))
+          .map((item) => item.name);
+
+        setAvailableBranches(branchNames);
+
+        // Clear a branch filter that is no longer active/assigned.
+        setFilters((current) => {
+          const nextBranch = branchNames.includes(current.branch)
+            ? current.branch
+            : '';
+
+          return nextBranch === current.branch
+            ? current
+            : { ...current, branch: nextBranch };
+        });
+      } catch (err) {
+        console.error('Failed to fetch branches:', err);
+      }
+    };
+
+    if (user) {
+      fetchBranches();
+    }
+  }, [user]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -85,8 +122,11 @@ const MyClassLogs = () => {
             <label className="label">Branch</label>
             <select name="branch" value={filters.branch} onChange={handleFilterChange} className="input-field text-sm">
               <option value="">All</option>
-              <option value="Dhanmondi">Dhanmondi</option>
-              <option value="Uttara">Uttara</option>
+              {availableBranches.map((branchName) => (
+                <option key={branchName} value={branchName}>
+                  {branchName}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex items-end">
