@@ -7,7 +7,6 @@ import AdminUsers from './pages/AdminUsers';
 import AdminBranches from './pages/AdminBranches';
 import AdminSubjects from './pages/AdminSubjects';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import Subjects from './pages/Subjects';
@@ -33,7 +32,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Navigate to="/login" replace />} />
           <Route path="/checkin" element={<StudentCheckin />} />
           <Route path="/checkin/:code" element={<StudentCheckin />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

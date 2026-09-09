@@ -116,10 +116,7 @@ const Login = () => {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-primary-600 hover:underline font-medium">
-                Register here
-              </Link>
+              Staff accounts are created by the System Administrator.
             </p>
           </div>
 
