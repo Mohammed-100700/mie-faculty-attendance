@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { updateUser } from '../../api/adminApi';
-import { getSubjects } from '../../api/subjectApi';
+import { updateUser, getAdminSubjects } from '../../api/adminApi';
 import { getBranches } from '../../api/branchApi';
 
 const EditUserModal = ({
@@ -50,8 +49,22 @@ const EditUserModal = ({
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const res = await getSubjects();
-        setSubjectsList(res.data.data);
+        const res = await getAdminSubjects();
+        const allSubjects = res.data.data || [];
+
+        // Show all active subjects plus only this lecturer's
+        // currently assigned inactive subjects.
+        const currentSubjectIds = new Set(
+          normalizedSubjects.map((id) => String(id))
+        );
+
+        const visibleSubjects = allSubjects.filter(
+          (subject) =>
+            subject.isActive !== false ||
+            currentSubjectIds.has(String(subject._id))
+        );
+
+        setSubjectsList(visibleSubjects);
       } catch (err) {
         console.error('Failed to fetch subjects', err);
       }
@@ -66,7 +79,34 @@ const EditUserModal = ({
     const fetchBranches = async () => {
       try {
         const res = await getBranches();
-        setBranchesList(res.data.data);
+        // Active branch objects returned by the API
+        const activeBranches = res.data.data || [];
+        const activeBranchNames = new Set(
+          activeBranches.map((branch) => branch.name)
+        );
+
+        // Preserve only this user's existing inactive assignments.
+        const currentBranchNames = new Set(form.branches || []);
+
+        if (form.managedBranch) {
+          currentBranchNames.add(form.managedBranch);
+        }
+
+        const inactiveCurrentBranches = [...currentBranchNames]
+          .filter(
+            (branchName) =>
+              branchName && !activeBranchNames.has(branchName)
+          )
+          .map((branchName) => ({
+            _id: `inactive-${branchName}`,
+            name: branchName,
+            isActive: false,
+          }));
+
+        setBranchesList([
+          ...activeBranches,
+          ...inactiveCurrentBranches,
+        ]);
       } catch (err) {
         console.error('Failed to fetch branches', err);
       }
@@ -157,10 +197,19 @@ const EditUserModal = ({
   if (!isOpen) return null;
 
   // Branch options from API
-  const branchOptions = branchesList.map((branch) => ({
-    label: branch.name,
-    value: branch.name,
-  }));
+  const branchOptions = branchesList
+    .filter(
+      (branch) =>
+        branch.isActive !== false ||
+        branch.name === form.managedBranch
+    )
+    .map((branch) => ({
+      label:
+        branch.isActive === false
+          ? `${branch.name} (Inactive)`
+          : branch.name,
+      value: branch.name,
+    }));
 
   // Subject options from API
   const subjectOptions = subjectsList.map((subject) => ({
@@ -252,7 +301,13 @@ const EditUserModal = ({
                   Branches
                 </label>
                 <div className="border rounded-lg max-h-48 overflow-y-auto p-3">
-                  {branchesList.map((branch) => (
+                  {branchesList
+                    .filter(
+                      (branch) =>
+                        branch.isActive !== false ||
+                        form.branches.includes(branch.name)
+                    )
+                    .map((branch) => (
                     <div
                       key={branch.name}
                       className="flex items-center mb-1"
@@ -263,7 +318,14 @@ const EditUserModal = ({
                         onChange={() => toggleBranch(branch.name)}
                         className="mr-2 accent-color-primary"
                       />
-                      <span className="text-sm text-gray-700">{branch.name}</span>
+                      <span className="text-sm text-gray-700">
+                    {branch.name}{/* Show (Inactive) marker for user's current assignment */}
+                    {branch.isActive === false && (
+                      <span className="text-xs text-gray-500 ml-1">
+                        (Inactive)
+                      </span>
+                    )}
+                  </span>
                     </div>
                   ))}
                 </div>
@@ -287,7 +349,11 @@ const EditUserModal = ({
                         onChange={() => toggleSubject(subject._id)}
                         className="mr-2 accent-color-primary"
                       />
-                      <span className="text-xs text-gray-500 truncate w-24">{subject.name}</span>
+                      <span className="text-xs text-gray-500 truncate w-40">
+                        {subject.isActive === false
+                          ? `${subject.name} (Inactive)`
+                          : subject.name}
+                      </span>
                     </div>
                   ))}
                 </div>

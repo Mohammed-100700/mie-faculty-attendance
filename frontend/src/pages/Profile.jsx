@@ -2,14 +2,16 @@ import { useState, useEffect } from 'react';
 import { FiUser, FiPhone, FiMapPin, FiBook, FiSave } from 'react-icons/fi';
 import { updateProfile } from '../api/authApi';
 import { getSubjects } from '../api/subjectApi';
+import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
 
 const Profile = () => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, fetchUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [availableSubjects, setAvailableSubjects] = useState([]);
+  const [availableBranches, setAvailableBranches] = useState([]);
 
   const [form, setForm] = useState({
     name: '',
@@ -17,6 +19,11 @@ const Profile = () => {
     branches: [],
     subjects: [],
   });
+
+  // Refresh profile data so administrator assignment changes are current
+  useEffect(() => {
+    fetchUser();
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -28,6 +35,19 @@ const Profile = () => {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+        setAvailableBranches(res.data.data || []);
+      } catch {
+        // Non-critical
+      }
+    };
+
+    fetchBranches();
+  }, []);
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -80,6 +100,24 @@ const Profile = () => {
     }
   };
 
+  const activeBranchNames = new Set(
+    availableBranches.map((branch) => branch.name)
+  );
+
+  const branchOptions = [
+    ...availableBranches,
+    ...(form.branches || [])
+      .filter(
+        (branchName) =>
+          branchName && !activeBranchNames.has(branchName)
+      )
+      .map((branchName) => ({
+        _id: `inactive-${branchName}`,
+        name: branchName,
+        isActive: false,
+      })),
+  ];
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
@@ -126,19 +164,27 @@ const Profile = () => {
           {user?.role === 'Lecturer' && (
             <div>
               <label className="label">Branches You Teach At</label>
-              <div className="flex gap-3">
-                {['Dhanmondi', 'Uttara'].map((branch) => (
+              <div className="flex flex-wrap gap-3">
+                {branchOptions.map((branch) => (
                   <label
-                    key={branch}
+                    key={branch._id || branch.name}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
-                      form.branches.includes(branch)
+                      form.branches.includes(branch.name)
                         ? 'bg-primary-50 border-primary-300 text-primary-700'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                   >
-                    <input type="checkbox" checked={form.branches.includes(branch)} onChange={() => handleBranchToggle(branch)} className="sr-only" />
+                    <input
+                      type="checkbox"
+                      checked={form.branches.includes(branch.name)}
+                      onChange={() => handleBranchToggle(branch.name)}
+                      className="sr-only"
+                    />
                     <FiMapPin className="w-4 h-4" />
-                    {branch}
+                    <span>
+                      {branch.name}
+                      {branch.isActive === false ? ' (Inactive)' : ''}
+                    </span>
                   </label>
                 ))}
               </div>

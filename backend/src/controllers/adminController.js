@@ -387,6 +387,355 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+
+
+// @desc    Get all branches (active + inactive for Super Admin)
+// @route   GET /api/admin/branches
+// @access  Super Admin
+const getAdminBranches = async (req, res, next) => {
+  try {
+    const branches = await Branch.find({}).sort({ name: 1 });
+    res.json({
+      success: true,
+      count: branches.length,
+      data: branches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create a new branch
+// @route   POST /api/admin/branches
+// @access  Super Admin
+const createBranch = async (req, res, next) => {
+  try {
+    const { name, code } = req.body;
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch name is required.',
+      });
+    }
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch code is required.',
+      });
+    }
+
+    // Trim strings
+    const trimmedName = name.trim();
+    const trimmedCode = code.trim().toUpperCase();
+
+    // Prevent duplicate name
+    const duplicateName = await Branch.findOne({ name: trimmedName });
+    if (duplicateName) {
+      return res.status(400).json({
+        success: false,
+        message: 'A branch with this name already exists.',
+      });
+    }
+
+    // Prevent duplicate code
+    const duplicateCode = await Branch.findOne({ code: trimmedCode });
+    if (duplicateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'A branch with this code already exists.',
+      });
+    }
+
+    // isActive defaults to true per Branch model default
+    const branch = await Branch.create({
+      name: trimmedName,
+      code: trimmedCode,
+      isActive: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Branch created successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Edit a branch
+// @route   PUT /api/admin/branches/:id
+// @access  Super Admin
+const updateBranch = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, code } = req.body;
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid branch ID format.',
+      });
+    }
+
+    const branch = await Branch.findById(id);
+
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found.',
+      });
+    }
+
+    // Branch name is IMMUTABLE - only code may be edited
+    // This preserves historical records that reference branch names as strings
+
+    // Edit code only (name is immutable)
+    if (code !== undefined) {
+      const trimmedCode = code.trim().toUpperCase();
+      // Prevent duplicate code (excluding current branch)
+      const duplicateCode = await Branch.findOne({
+        code: trimmedCode,
+        _id: { $ne: branch._id },
+      });
+      if (duplicateCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'A branch with this code already exists.',
+        });
+      }
+      branch.code = trimmedCode;
+    }
+
+    // Name is NOT editable - immutable to preserve historical references
+    // if (name !== undefined) { ... }
+
+    await branch.save();
+
+    res.json({
+      success: true,
+      message: 'Branch code updated successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle branch status (activate/deactivate)
+// @route   PATCH /api/admin/branches/:id/status
+// @access  Super Admin
+const toggleBranchStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    // Validate isActive is boolean
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isActive must be a boolean value.',
+      });
+    }
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid branch ID format.',
+      });
+    }
+
+    const branch = await Branch.findById(id);
+
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found.',
+      });
+    }
+
+    // Toggle status
+    branch.isActive = isActive;
+    await branch.save();
+
+    res.json({
+      success: true,
+      message: 'Branch status updated successfully.',
+      data: branch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+// @desc    Get all subjects (active + inactive for Super Admin)
+// @route   GET /api/admin/subjects
+// @access  Super Admin
+const getAdminSubjects = async (req, res, next) => {
+  try {
+    const subjects = await Subject.find({}).sort({ name: 1 });
+    res.json({
+      success: true,
+      count: subjects.length,
+      data: subjects,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create a new subject
+// @route   POST /api/admin/subjects
+// @access  Super Admin
+const createSubject = async (req, res, next) => {
+  try {
+    const { name, programme } = req.body;
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject name is required.',
+      });
+    }
+
+    // Trim name
+    const trimmedName = name.trim();
+
+    // Prevent duplicate name (case-insensitive)
+    const duplicate = await Subject.findOne({ name: new RegExp(`^${trimmedName}$`, 'i') });
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: 'A subject with this name already exists.',
+      });
+    }
+
+    // isActive defaults to true per Subject model default
+    // isDefault must NOT be accepted from client
+    // createdBy is set to null for system-seeded, or we could set it to the Super Admin
+
+    const subject = await Subject.create({
+      name: trimmedName,
+      programme: programme || 'NCUK IFY',
+      isActive: true,
+      isDefault: false,
+      createdBy: null,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Subject created successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Edit a subject
+// @route   PUT /api/admin/subjects/:id
+// @access  Super Admin
+const updateSubject = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, programme } = req.body;
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subject ID format.',
+      });
+    }
+
+    const subject = await Subject.findById(id);
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found.',
+      });
+    }
+
+    // SUBJECT NAME IS IMMUTABLE - do not allow renaming
+    // Only programme may be edited
+
+    // Edit programme only (name is immutable)
+    if (programme !== undefined) {
+      const trimmedProg = programme.trim();
+      subject.programme = trimmedProg || 'NCUK IFY';
+    }
+
+    // Name, isDefault, createdBy, isActive are NOT editable through this endpoint
+    // Status has its own separate endpoint
+
+    await subject.save();
+
+    res.json({
+      success: true,
+      message: 'Subject code/name updated successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle subject status (activate/deactivate)
+// @route   PATCH /api/admin/subjects/:id/status
+// @access  Super Admin
+const toggleSubjectStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    // Validate isActive is boolean
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'isActive must be a boolean value.',
+      });
+    }
+
+    // Validate ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subject ID format.',
+      });
+    }
+
+    const subject = await Subject.findById(id);
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subject not found.',
+      });
+    }
+
+    // Toggle status
+    subject.isActive = isActive;
+    await subject.save();
+
+    res.json({
+      success: true,
+      message: 'Subject status updated successfully.',
+      data: subject,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   dashboard,
   getUsers,
@@ -394,4 +743,12 @@ module.exports = {
   updateUser,
   updateStatus,
   resetPassword,
+  getAdminBranches,
+  createBranch,
+  updateBranch,
+  toggleBranchStatus,
+  getAdminSubjects,
+  createSubject,
+  updateSubject,
+  toggleSubjectStatus,
 };

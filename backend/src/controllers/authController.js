@@ -1,100 +1,5 @@
-const mongoose = require('mongoose');
 const User = require('../models/User');
-const Subject = require('../models/Subject');
 const generateToken = require('../utils/generateToken');
-
-// @desc    Register a new user (Lecturer or Academic Manager)
-// @route   POST /api/auth/register
-const register = async (req, res, next) => {
-  try {
-    const { name, email, password, phone, branches, subjects, role, managedBranch } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
-    }
-
-    const cleanName = name.trim().substring(0, 100);
-    const cleanEmail = email.trim().toLowerCase().substring(0, 100);
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
-    }
-
-    const existingUser = await User.findOne({ email: cleanEmail });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'A user with this email already exists.',
-      });
-    }
-
-    // Validate subjects if provided: must be valid ObjectIds referencing existing Subject docs
-    let subjectIds = [];
-    if (subjects && Array.isArray(subjects) && subjects.length > 0) {
-      for (const subId of subjects) {
-        if (!mongoose.Types.ObjectId.isValid(subId)) {
-          return res.status(400).json({ success: false, message: `Invalid subject ID: ${subId}` });
-        }
-        const subDoc = await Subject.findById(subId);
-        if (!subDoc) {
-          return res.status(400).json({ success: false, message: `Subject not found: ${subId}` });
-        }
-      }
-      subjectIds = subjects;
-    }
-
-    const userData = {
-      name: cleanName,
-      email: cleanEmail,
-      password,
-      phone: (phone || '').trim().substring(0, 20),
-      branches: branches || [],
-      subjects: subjectIds,
-      role: role || 'Lecturer',
-    };
-
-    // Public registration must never create a Super Admin
-    if (role === 'Super Admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Public registration cannot create a Super Admin account.',
-      });
-    }
-
-    if (role === 'Academic Manager' && managedBranch) {
-      userData.managedBranch = managedBranch;
-    }
-
-    const user = await User.create(userData);
-    const token = generateToken(user._id);
-
-    // Populate subjects for the response
-    const populatedUser = await User.findById(user._id).populate('subjects');
-
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful.',
-      data: {
-        _id: populatedUser._id,
-        name: populatedUser.name,
-        email: populatedUser.email,
-        phone: populatedUser.phone,
-        role: populatedUser.role,
-        branches: populatedUser.branches,
-        subjects: populatedUser.subjects,
-        managedBranch: populatedUser.managedBranch,
-        token,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -295,4 +200,4 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe, updateProfile, forgotPassword, resetPassword };
+module.exports = { login, getMe, updateProfile, forgotPassword, resetPassword };

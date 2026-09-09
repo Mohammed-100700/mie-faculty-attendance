@@ -4,7 +4,9 @@ import {
   FiUser,
   FiPlusCircle,
   FiGrid,
+  FiBook,
   FiList,
+  FiMapPin,
   FiSettings,
   FiLogOut,
   FiClipboard,
@@ -44,12 +46,14 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const superAdminNavItems = [
-    { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: true },
+    { to: '/admin', icon: FiHome, label: 'Dashboard', end: true },
     { to: '/admin/users', icon: FiUser, label: 'Users', end: false },
+    { to: '/admin/branches', icon: FiMapPin, label: 'Branches', end: false },
+    { to: '/admin/subjects', icon: FiBook, label: 'Subjects', end: false },
   ];
-
   let navItems = lecturerNavItems;
   let portalLabel = 'Faculty Portal';
+
   if (user?.role === 'Academic Manager') {
     navItems = amNavItems;
     portalLabel = 'Academic Manager';

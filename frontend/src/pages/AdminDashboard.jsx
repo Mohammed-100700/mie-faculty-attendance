@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiUsers, FiUserCheck, FiUserX, FiBookOpen, FiMapPin, FiBriefcase, FiShield, FiUserPlus, FiPlus } from 'react-icons/fi';
+import { FiUsers, FiUserCheck, FiUserX, FiBookOpen, FiMapPin, FiBriefcase, FiShield, FiUserPlus, FiPlus, FiBook } from 'react-icons/fi';
 import { getDashboard } from '../api/adminApi';
 import { useNavigate } from 'react-router-dom';
 
@@ -181,6 +181,20 @@ const AdminDashboard = () => {
           >
             <FiUserPlus className="w-4 h-4" />
             <span>Manage Users</span>
+          </button>
+          <button
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
+            onClick={() => navigate('/admin/branches')}
+          >
+            <FiMapPin className="w-4 h-4" />
+            <span>Manage Branches</span>
+          </button>
+          <button
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"
+            onClick={() => navigate('/admin/subjects')}
+          >
+            <FiBook className="w-4 h-4" />
+            <span>Manage Subjects</span>
           </button>
           <button
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 rounded-lg text-sm text-white hover:bg-primary-700"

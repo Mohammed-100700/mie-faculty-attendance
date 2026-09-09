@@ -10,7 +10,6 @@ const attendanceSessionSchema = new mongoose.Schema(
     },
     branch: {
       type: String,
-      enum: ['Dhanmondi', 'Uttara'],
       required: true,
     },
     batch: {

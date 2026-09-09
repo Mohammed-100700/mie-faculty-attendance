@@ -4,13 +4,13 @@ import {
   FiCheckCircle, FiXCircle, FiChevronDown, FiChevronUp,
 } from 'react-icons/fi';
 import { getReports } from '../api/attendanceSessionApi';
+import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
 import ExportButtons from '../components/ExportButtons';
 import { exportLecturerPdf, exportManagerPdf } from '../utils/exportPdf';
 import { exportLecturerExcel, exportManagerExcel } from '../utils/exportExcel';
 
 const BATCHES = ['September', 'December', 'March', 'June'];
-const BRANCHES = ['Dhanmondi', 'Uttara'];
 
 const ExecutiveDashboard = () => {
   const { user } = useAuth();
@@ -18,8 +18,22 @@ const ExecutiveDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [batch, setBatch] = useState('');
   const [branch, setBranch] = useState('');
+  const [availableBranches, setAvailableBranches] = useState([]);
   const [subject, setSubject] = useState('');
   const [expandedSession, setExpandedSession] = useState(null);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+        setAvailableBranches(res.data.data || []);
+      } catch (err) {
+        console.error('Failed to fetch branches:', err);
+      }
+    };
+
+    fetchBranches();
+  }, []);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -47,6 +61,13 @@ const ExecutiveDashboard = () => {
 
   // Unique subjects for filter dropdown
   const uniqueSubjects = [...new Set(sessions.map((s) => s.subject).filter(Boolean))];
+
+  // Active branches plus any historical branches present in reports.
+  const branchOptions = [...new Set([
+    ...availableBranches.map((item) => item.name),
+    ...sessions.map((session) => session.branch).filter(Boolean),
+    ...(branch ? [branch] : []),
+  ])].sort();
 
   const handleExportPdf = () => {
     const filtered = sessions.map((s) => ({
@@ -89,7 +110,7 @@ const ExecutiveDashboard = () => {
             <label className="label">Branch</label>
             <select value={branch} onChange={(e) => setBranch(e.target.value)} className="input-field text-sm">
               <option value="">All Branches</option>
-              {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
           <div>

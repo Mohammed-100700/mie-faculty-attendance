@@ -9,9 +9,9 @@ import {
   updateMark, updateStudentNcukId, toggleTestApproval, syncMarks,
 } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
+import { getBranches } from '../api/branchApi';
 
 const BATCHES = ['March', 'July', 'September', 'December'];
-const BRANCHES = ['Dhanmondi', 'Uttara'];
 const YEARS = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - 2 + i));
 
 const MarksManagement = () => {
@@ -25,8 +25,40 @@ const MarksManagement = () => {
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [newBatch, setNewBatch] = useState(BATCHES[0]);
   const [newYear, setNewYear] = useState(String(new Date().getFullYear()));
-  const [newBranch, setNewBranch] = useState(BRANCHES[0]);
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [newBranch, setNewBranch] = useState('');
   const [newSubject, setNewSubject] = useState('');
+
+  // Load only active branches assigned to this lecturer
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await getBranches();
+
+        const assignedBranchNames = new Set(
+          (user?.branches || []).map((branch) => String(branch))
+        );
+
+        const branchNames = (res.data.data || [])
+          .filter((branch) => assignedBranchNames.has(branch.name))
+          .map((branch) => branch.name);
+
+        setAvailableBranches(branchNames);
+
+        setNewBranch((current) =>
+          branchNames.includes(current)
+            ? current
+            : branchNames[0] || ''
+        );
+      } catch (err) {
+        console.error('Failed to fetch branches', err);
+      }
+    };
+
+    if (user) {
+      fetchBranches();
+    }
+  }, [user]);
 
   // Load lecturer's assigned subjects from user context
   useEffect(() => {
@@ -91,6 +123,10 @@ const MarksManagement = () => {
   const handleAddSheet = async (e) => {
     e.preventDefault();
     if (!newSubject.trim()) return;
+    if (!newBranch) {
+      showToast('You do not have an active branch assigned.', 'error');
+      return;
+    }
     try {
       const res = await addSheet(newBatch, newBranch, newSubject.trim(), newYear);
       setWorkbook(res.data.data);
@@ -351,7 +387,7 @@ const MarksManagement = () => {
               <div>
                 <label className="label">Branch</label>
                 <select value={newBranch} onChange={(e) => setNewBranch(e.target.value)} className="input-field">
-                  {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  {availableBranches.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
               <div>
