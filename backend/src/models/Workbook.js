@@ -20,6 +20,15 @@ const sheetSchema = new mongoose.Schema({
     {
       name: { type: String, required: true },
       ncukId: { type: String, default: '' },
+      studentRef: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Student',
+        default: null,
+      },
+      mieStudentId: {
+        type: String,
+        default: '',
+      },
       marks: [
         {
           colIndex: { type: Number, required: true },
