@@ -26,14 +26,30 @@ const studentCheckinSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    studentRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Student',
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
-// Prevent duplicate checkins: same name per session
+// Prevent duplicate checkins: same name per session (legacy)
 studentCheckinSchema.index(
   { sessionId: 1, studentName: 1 },
   { unique: true }
+);
+
+// Registry-linked check-in: one per session with a studentRef
+studentCheckinSchema.index(
+  { sessionId: 1, studentRef: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      studentRef: { $type: 'objectId' },
+    },
+  }
 );
 
 module.exports = mongoose.model('StudentCheckin', studentCheckinSchema);
