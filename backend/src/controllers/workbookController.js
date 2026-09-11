@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Workbook = require('../models/Workbook');
+const Student = require('../models/Student');
 
 // Sanitize helper — strip HTML tags and limit length
 function sanitize(str, maxLen = 200) {
@@ -163,23 +165,126 @@ const deleteTest = async (req, res, next) => {
 const addStudent = async (req, res, next) => {
   try {
     const { sheetIndex } = req.params;
-    const { name, ncukId } = req.body;
+    const { name, ncukId, mieStudentId } = req.body;
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
     if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
 
     const sheet = workbook.sheets[sheetIndex];
     if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
 
-    const cleanName = sanitize(name, 100);
-    if (!cleanName) {
-      return res.status(400).json({ success: false, message: 'Student name is required.' });
+    // === IDENTITY RESOLUTION ===
+    let resolvedStudent = null;
+    let createdNewStudent = false;
+
+    // Helper: attempt to create a Student identity with collision retry
+    // Max 2 total attempts. Retries ONLY on mieStudentId duplicate (err.code 11000).
+    const createStudentIdentity = async (nameSanitized, ncukIdTrim) => {
+      let attempts = 0;
+      let lastError = null;
+      while (attempts < 2) {
+        const objectId = new mongoose.Types.ObjectId();
+        const generatedMieId = Student.generateMieStudentId(objectId);
+        const studentDoc = new Student({
+          _id: objectId,
+          mieStudentId: generatedMieId,
+          name: nameSanitized,
+          ncukId: ncukIdTrim,
+        });
+        try {
+          await studentDoc.save();
+          return studentDoc;
+        } catch (err) {
+          lastError = err;
+          // Detect a mieStudentId duplicate using BOTH possible MongoDB shapes
+          const isMieIdCollision =
+            err.code === 11000 &&
+            (err.keyPattern?.mieStudentId || err.keyValue?.mieStudentId);
+          if (isMieIdCollision) {
+            attempts++;
+            continue;
+          }
+          // If duplicate on ncukId (or any other error), propagate immediately
+          return { error: err };
+        }
+      }
+      // attempt 2 failed for ANY reason — propagate the actual last error
+      return { error: lastError };
+    };
+
+    // CASE A — mieStudentId supplied
+    if (mieStudentId !== undefined && mieStudentId !== null && String(mieStudentId).trim() !== '') {
+      const cleanMieId = String(mieStudentId).trim();
+      const exactStudent = await Student.findOne({ mieStudentId: cleanMieId });
+      if (!exactStudent) {
+        return res.status(404).json({ success: false, message: 'Student identity not found. Add the student to the registry first, or provide ncukId.' });
+      }
+      // Link existing Student — use canonical identity data; name is NOT required
+      resolvedStudent = exactStudent;
+      // Use the registry name and ncukId; do NOT overwrite from workbook input
+    }
+    // CASE B — no mieStudentId, but ncukId supplied
+    else if (ncukId !== undefined && ncukId !== null && String(ncukId).trim() !== '') {
+      const cleanNcukId = String(ncukId).trim();
+      const exactStudent = await Student.findOne({ ncukId: cleanNcukId });
+      if (exactStudent) {
+        // Found existing Student by ncukId — link it with canonical data; name is NOT required
+        resolvedStudent = exactStudent;
+      } else {
+        // Not found — create new Student identity; name IS required and sanitized
+        createdNewStudent = true;
+        const nameSanitized = sanitize(name, 100);
+        if (!nameSanitized) {
+          return res.status(400).json({ success: false, message: 'Student name is required.' });
+        }
+        const created = await createStudentIdentity(nameSanitized, cleanNcukId);
+        if (created.error) {
+          return next(created.error);
+        }
+        resolvedStudent = created;
+      }
+    }
+    // CASE C — neither mieStudentId nor ncukId supplied (or both empty)
+    else {
+      createdNewStudent = true;
+      const nameSanitized = sanitize(name, 100);
+      if (!nameSanitized) {
+        return res.status(400).json({ success: false, message: 'Student name is required.' });
+      }
+      const created = await createStudentIdentity(nameSanitized, null);
+      if (created.error) {
+        return next(created.error);
+      }
+      resolvedStudent = created;
     }
 
-    const cleanNcukId = ncukId ? sanitize(ncukId, 50) : '';
-
+    // Build workbook student object from resolved Student
+    const cleanNcukId = resolvedStudent.ncukId || '';
     const marks = sheet.tests.map((t, i) => ({ colIndex: i + 1, value: '' }));
-    sheet.students.push({ name: cleanName, ncukId: cleanNcukId, marks });
-    await workbook.save();
+    const workbookStudent = {
+      name: resolvedStudent.name,
+      ncukId: cleanNcukId,
+      studentRef: resolvedStudent._id,
+      mieStudentId: resolvedStudent.mieStudentId,
+      marks,
+    };
+
+    sheet.students.push(workbookStudent);
+
+    // Save workbook; if it fails and we created a new Student, best-effort rollback
+    try {
+      await workbook.save();
+    } catch (workbookErr) {
+      // If we created a new Student identity in this request, clean it up
+      if (createdNewStudent && resolvedStudent && resolvedStudent._id) {
+        try {
+          await Student.deleteOne({ _id: resolvedStudent._id });
+        } catch (_) {
+          // Best-effort cleanup; do not hide the original workbook error
+        }
+      }
+      return next(workbookErr);
+    }
+
     res.json({ success: true, data: workbook });
   } catch (error) {
     next(error);
