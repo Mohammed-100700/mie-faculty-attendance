@@ -44,6 +44,15 @@ const attendanceSessionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    workbookId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workbook',
+      default: null,
+    },
+    sheetIndex: {
+      type: Number,
+      default: null,
+    },
   },
   { timestamps: true }
 );
