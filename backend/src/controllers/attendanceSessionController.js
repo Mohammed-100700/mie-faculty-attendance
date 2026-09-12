@@ -1,6 +1,9 @@
 const AttendanceSession = require('../models/AttendanceSession');
 const StudentCheckin = require('../models/StudentCheckin');
+const Workbook = require('../models/Workbook');
+const Branch = require('../models/Branch');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 
 // Generate a short random code
 function generateSessionCode(length = 5) {
@@ -17,7 +20,11 @@ function generateSessionCode(length = 5) {
 // @route   POST /api/attendance-sessions
 const createSession = async (req, res, next) => {
   try {
-    const { branch, batch, subject } = req.body;
+    const { branch, batch, subject, workbookId, sheetIndex } = req.body;
+
+    // Normalized values for consistent use across all code paths
+    const resolvedBatch = batch || 'September';
+    const resolvedSubject = (subject || '').trim();
 
     if (!branch) {
       return res.status(400).json({ success: false, message: 'Branch is required.' });
@@ -28,7 +35,7 @@ const createSession = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Valid active branch is required.' });
     }
 
-    // Generate unique code
+    // --- Restored: original unique session-code generation ---
     let sessionCode;
     let exists = true;
     let attempts = 0;
@@ -41,16 +48,129 @@ const createSession = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Failed to generate unique session code. Please try again.' });
     }
 
+    // --- Handle explicit workbookId / sheetIndex safely ---
+    // Require BOTH workbookId and sheetIndex when either one is supplied.
+    // Empty/null workbookId counts as missing.
+    // Empty/null sheetIndex counts as missing.
+    // Validate workbookId is a valid MongoDB ObjectId before Workbook.findOne().
+    // Invalid workbookId must return a controlled 400 response, not throw a CastError/500.
+
+    let workbook;
+    let resolvedSheetIndex = null;
+
+    // Determine explicit presence — treat undefined, null, and blank string as "not supplied"
+    const hasWorkbookId =
+      workbookId !== undefined &&
+      workbookId !== null &&
+      String(workbookId).trim() !== '';
+    const hasSheetIndex =
+      sheetIndex !== undefined &&
+      sheetIndex !== null &&
+      String(sheetIndex).trim() !== '';
+
+    if (hasWorkbookId !== hasSheetIndex) {
+      // Only one of the two was supplied
+      return res.status(400).json({
+        success: false,
+        message: 'workbookId and sheetIndex must both be provided.',
+      });
+    }
+
+    // At this point: either both are provided, or neither is provided
+    if (hasWorkbookId && hasSheetIndex) {
+      // Both supplied — explicit validation path
+      if (!mongoose.isValidObjectId(workbookId)) {
+        return res.status(400).json({ success: false, message: 'Invalid workbookId.' });
+      }
+
+      // Find the lecturer's workbook
+      workbook = await Workbook.findOne({ _id: workbookId, lecturerId: req.user._id });
+      if (!workbook) {
+        return res
+          .status(404)
+          .json({ success: false, message: 'Workbook not found or does not belong to you.' });
+      }
+
+      // Validate sheetIndex:
+      // - convert cleanly to Number
+      // - be an integer
+      // - be >= 0
+      // - exist in workbook.sheets
+      const idx = Number(sheetIndex);
+      if (
+        !Number.isInteger(idx) ||
+        idx < 0 ||
+        idx >= workbook.sheets.length
+      ) {
+        return res.status(400).json({ success: false, message: 'Invalid sheetIndex for your workbook.' });
+      }
+
+      // Additional validation: the selected sheet's branch/batch/subject must match the session request
+      const sheet = workbook.sheets[idx];
+      if (
+        sheet.branch !== branch ||
+        sheet.batch !== (batch || 'September') ||
+        sheet.subject !== (subject || '').trim()
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: 'Selected sheet branch/batch/subject do not match the session request.',
+          });
+      }
+
+      resolvedSheetIndex = idx;
+    } else {
+      // Neither supplied — use default fallback lookup by lecturer workbook
+      // Find the lecturer's workbook
+      const workbookResult = await Workbook.findOne({ lecturerId: req.user._id });
+      if (!workbookResult) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'No workbook found for your account. Please create a workbook first.' });
+      }
+
+      // Find ALL sheets matching the requested branch/batch/subject
+      const matchSheets = workbookResult.sheets.filter(
+        (s) => s.branch === branch && s.batch === resolvedBatch && s.subject === resolvedSubject
+      );
+
+      if (matchSheets.length === 0) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'No matching sheet found in your workbook for this branch/batch/subject combination.' });
+      }
+
+      if (matchSheets.length > 1) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              'Ambiguous: multiple sheets match branch/batch/subject. Please specify which sheet to use by providing workbookId and sheetIndex.',
+          });
+      }
+
+      // Exactly one match — use the sheet's array index
+      resolvedSheetIndex = workbookResult.sheets.indexOf(matchSheets[0]);
+      workbook = workbookResult;
+    }
+
+    // --- Original unique session-code generation concludes ---
     const now = new Date();
+
     const session = await AttendanceSession.create({
       lecturerId: req.user._id,
       branch,
-      batch: batch || 'September',
-      subject: (subject || '').trim(),
+      batch: resolvedBatch,
+      subject: resolvedSubject,
       sessionDate: now,
       startTime: now,
       sessionCode,
       isActive: true,
+      workbookId: workbook._id,
+      sheetIndex: resolvedSheetIndex,
     });
 
     res.status(201).json({
