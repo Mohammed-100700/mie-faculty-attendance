@@ -1,5 +1,6 @@
 const AttendanceSession = require('../models/AttendanceSession');
 const StudentCheckin = require('../models/StudentCheckin');
+const Student = require('../models/Student');
 const Workbook = require('../models/Workbook');
 const Branch = require('../models/Branch');
 const crypto = require('crypto');
@@ -284,10 +285,6 @@ const studentCheckin = async (req, res, next) => {
   try {
     const { studentName, studentId } = req.body;
 
-    if (!studentName || !studentName.trim()) {
-      return res.status(400).json({ success: false, message: 'Student name is required.' });
-    }
-
     const session = await AttendanceSession.findById(req.params.id);
 
     if (!session) {
@@ -298,30 +295,115 @@ const studentCheckin = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'This session is closed. Attendance checkin is no longer accepted.' });
     }
 
-    // Check for duplicate
-    const existing = await StudentCheckin.findOne({
-      sessionId: session._id,
-      studentName: studentName.trim(),
-    });
+    // --- Session-type classification ---
+    // Treat a session as linked ONLY when BOTH workbookId and sheetIndex are present
+    const hasWorkbookLink = session.workbookId !== null && session.workbookId !== undefined;
+    const hasSheetLink = session.sheetIndex !== null && session.sheetIndex !== undefined;
 
-    if (existing) {
-      return res.status(400).json({ success: false, message: 'You are already checked in for this session.' });
+    if (hasWorkbookLink !== hasSheetLink) {
+      // corrupted / half-linked session — reject with controlled error
+      return res.status(400).json({
+        success: false,
+        message: 'Session has incomplete linkage (workbookId and sheetIndex must both be present or both absent).',
+      });
     }
 
-    const checkin = await StudentCheckin.create({
-      sessionId: session._id,
-      studentName: studentName.trim(),
-      studentId: (studentId || '').trim(),
-      ipAddress: req.ip || '',
-    });
+    if (hasWorkbookLink && hasSheetLink) {
+      // ====== LINKED SESSION PATH ======
+      // studentId means exact mieStudentId
+      const mieStudentId = (studentId || '').trim();
+      if (!mieStudentId) {
+        return res.status(400).json({ success: false, message: 'Student MIE ID is required.' });
+      }
 
-    const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
+      // Exact Student lookup by mieStudentId — no name lookup, no auto-creation
+      const student = await Student.findOne({ mieStudentId });
+      if (!student) {
+        return res.status(404).json({ success: false, message: 'Student not found with MIE Student ID: ' + mieStudentId });
+      }
 
-    res.status(201).json({
-      success: true,
-      message: `Checked in successfully for ${session.branch} class.`,
-      data: { checkin, checkinCount },
-    });
+      // Validate session's exact workbookId and lecturer ownership
+      const workbook = await Workbook.findOne({
+        _id: session.workbookId,
+        lecturerId: session.lecturerId,
+      });
+      if (!workbook) {
+        return res.status(404).json({ success: false, message: 'Session workbook not found or does not belong to you.' });
+      }
+
+      // Validate sheetIndex exists in workbook.sheets
+      if (!Number.isInteger(session.sheetIndex) || session.sheetIndex < 0 || session.sheetIndex >= workbook.sheets.length) {
+        return res.status(400).json({ success: false, message: 'Invalid sheetIndex for your workbook.' });
+      }
+
+      // Roster membership MUST use studentRef — embedded comparison
+      const sheet = workbook.sheets[session.sheetIndex];
+      const isInRoster = sheet.students.some(s => s.studentRef && s.studentRef.equals(student._id));
+      if (!isInRoster) {
+        return res.status(400).json({ success: false, message: 'Student is not in the roster for this sheet.' });
+      }
+
+      // ADD EXPLICIT LINKED DUPLICATE CHECK
+      const existing = await StudentCheckin.findOne({
+        sessionId: session._id,
+        studentRef: student._id,
+      });
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: 'You are already checked in for this session.',
+        });
+      }
+
+      // Create StudentCheckin with canonical data (ignore user-supplied studentName)
+      const checkin = await StudentCheckin.create({
+        sessionId: session._id,
+        studentRef: student._id,
+        studentName: student.name,
+        studentId: student.mieStudentId,
+        ipAddress: req.ip || '',
+      });
+
+      const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
+
+      res.status(201).json({
+        success: true,
+        message: 'Checked in successfully for ' + session.branch + ' class.',
+        data: { checkin, checkinCount },
+      });
+    } else {
+      // ====== LEGACY SESSION PATH ======
+      // studentName is required for legacy sessions
+      if (!studentName || !studentName.trim()) {
+        return res.status(400).json({ success: false, message: 'Student name is required.' });
+      }
+
+      // Preserve existing name-based check-in behavior
+      // Explicit duplicate check by sessionId + studentName
+      const existing = await StudentCheckin.findOne({
+        sessionId: session._id,
+        studentName: studentName.trim(),
+      });
+
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'You are already checked in for this session.' });
+      }
+
+      const checkin = await StudentCheckin.create({
+        sessionId: session._id,
+        studentName: studentName.trim(),
+        studentId: (studentId || '').trim(),
+        ipAddress: req.ip || '',
+      });
+
+      const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
+
+      res.status(201).json({
+        success: true,
+        message: 'Checked in successfully for ' + session.branch + ' class.',
+        data: { checkin, checkinCount },
+      });
+    }
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ success: false, message: 'You are already checked in for this session.' });

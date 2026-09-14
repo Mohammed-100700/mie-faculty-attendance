@@ -38,7 +38,7 @@ const studentCheckinSchema = new mongoose.Schema(
 // Prevent duplicate checkins: same name per session (legacy)
 studentCheckinSchema.index(
   { sessionId: 1, studentName: 1 },
-  { unique: true }
+  { unique: true, partialFilterExpression: { studentRef: null } }
 );
 
 // Registry-linked check-in: one per session with a studentRef
