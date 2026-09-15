@@ -439,10 +439,166 @@ const getCheckins = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Session not found.' });
     }
 
-    const checkins = await StudentCheckin.find({ sessionId: session._id })
-      .sort({ checkedInAt: 1 });
+    // --- Classify session linkage ---
+    const hasWorkbookLink =
+      session.workbookId !== null && session.workbookId !== undefined;
+    const hasSheetLink =
+      session.sheetIndex !== null && session.sheetIndex !== undefined;
 
-    res.json({ success: true, count: checkins.length, data: checkins });
+    // both present => linked
+    // both absent => legacy
+    // only one present => controlled integrity error
+    if (hasWorkbookLink !== hasSheetLink) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Session has incomplete linkage (workbookId and sheetIndex must both be present or both absent).',
+      });
+    }
+
+    if (hasWorkbookLink && hasSheetLink) {
+      // ====== LINKED PATH ======
+
+      // 1. Validate workbook ownership
+      const workbook = await Workbook.findOne({
+        _id: session.workbookId,
+        lecturerId: session.lecturerId,
+      });
+      if (!workbook) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Session workbook not found or does not belong to you.',
+        });
+      }
+
+      // 2. Validate sheetIndex
+      if (
+        !Number.isInteger(session.sheetIndex) ||
+        session.sheetIndex < 0 ||
+        session.sheetIndex >= workbook.sheets.length
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid sheetIndex for your workbook.',
+        });
+      }
+
+      // 3. linked roster integrity
+      const roster = workbook.sheets[session.sheetIndex].students;
+
+      // Every roster row MUST have studentRef
+      for (const rosterStudent of roster) {
+        if (!rosterStudent.studentRef) {
+          return res.status(409).json({
+            success: false,
+            message:
+              'Roster integrity error: a roster entry is missing studentRef.',
+          });
+        }
+      }
+
+      // Detect duplicate studentRef values in roster
+      const refSeen = new Set();
+      for (const rosterStudent of roster) {
+        const refStr = rosterStudent.studentRef.toString();
+        if (refSeen.has(refStr)) {
+          return res.status(409).json({
+            success: false,
+            message:
+              'Roster integrity error: duplicate studentRef detected in workbook sheet.',
+          });
+        }
+        refSeen.add(refStr);
+      }
+
+      // 4. linked checkin integrity
+      const checkins = await StudentCheckin.find({
+        sessionId: session._id,
+      }).sort({ checkedInAt: 1 });
+
+      // Every checkin MUST have a non-null studentRef
+      for (const checkin of checkins) {
+        if (!checkin.studentRef) {
+          return res.status(409).json({
+            success: false,
+            message:
+              'Checkin integrity error: a checkin record is missing studentRef.',
+          });
+        }
+      }
+
+      // Every checkin.studentRef MUST be in the roster identity Set
+      const rosterRefSet = new Set();
+      for (const rosterStudent of roster) {
+        rosterRefSet.add(rosterStudent.studentRef.toString());
+      }
+
+      for (const checkin of checkins) {
+        const refStr = checkin.studentRef.toString();
+        if (!rosterRefSet.has(refStr)) {
+          return res.status(409).json({
+            success: false,
+            message:
+              'Checkin integrity error: a checkin record has studentRef not in current roster.',
+          });
+        }
+      }
+
+      // 5. Build checkin Map: keyed by String(studentRef)
+      const checkinMap = new Map();
+      for (const checkin of checkins) {
+        checkinMap.set(checkin.studentRef.toString(), checkin);
+      }
+
+      // 6. Derive attendance from roster in original order
+      const attendanceRows = [];
+      let presentCount = 0;
+
+      for (const rosterStudent of roster) {
+        const studentRefStr = rosterStudent.studentRef.toString();
+        const matchingCheckin = checkinMap.get(studentRefStr);
+        const status = matchingCheckin ? 'present' : 'absent';
+
+        attendanceRows.push({
+          studentRef: rosterStudent.studentRef,
+          mieStudentId: rosterStudent.mieStudentId,
+          studentName: rosterStudent.name,
+          status,
+          checkedInAt: matchingCheckin ? matchingCheckin.checkedInAt : null,
+        });
+
+        if (status === 'present') {
+          presentCount++;
+        }
+      }
+
+      const absentCount = roster.length - presentCount;
+
+      res.json({
+        success: true,
+        mode: 'linked',
+        summary: {
+          rosterCount: roster.length,
+          presentCount,
+          absentCount,
+        },
+        data: attendanceRows,
+      });
+    } else {
+      // ====== LEGACY PATH ======
+
+      const checkins = await StudentCheckin.find({
+        sessionId: session._id,
+      }).sort({ checkedInAt: 1 });
+
+      res.json({
+        success: true,
+        mode: 'legacy',
+        count: checkins.length,
+        data: checkins,
+      });
+    }
   } catch (error) {
     next(error);
   }
