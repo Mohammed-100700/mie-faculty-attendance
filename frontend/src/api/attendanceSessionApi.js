@@ -18,8 +18,8 @@ export const getCheckins = (id) =>
 export const getSessionByCode = (code) =>
   api.get(`/attendance-sessions/code/${code}`);
 
-export const studentCheckin = (id, studentName, studentId) =>
-  api.post(`/attendance-sessions/${id}/checkin`, { studentName, studentId });
+export const studentCheckin = (id, payload) =>
+  api.post(`/attendance-sessions/${id}/checkin`, payload);
 
 // Reports (Executive Office)
 export const getReports = (batch, branch, subject) =>

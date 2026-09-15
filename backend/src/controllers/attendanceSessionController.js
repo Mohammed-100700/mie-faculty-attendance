@@ -241,6 +241,19 @@ const getSessionByCode = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Session not found. Check the code and try again.' });
     }
 
+    // Determine checkin mode for public-facing response
+    const hasWorkbook = session.workbookId !== null && session.workbookId !== undefined;
+    const hasSheet = session.sheetIndex !== null && session.sheetIndex !== undefined;
+
+    let checkinMode;
+    if (hasWorkbook && hasSheet) {
+      checkinMode = 'linked';
+    } else if (!hasWorkbook && !hasSheet) {
+      checkinMode = 'legacy';
+    } else {
+      checkinMode = 'invalid';
+    }
+
     const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
 
     res.json({
@@ -251,6 +264,7 @@ const getSessionByCode = async (req, res, next) => {
         subject: session.subject,
         sessionDate: session.sessionDate,
         isActive: session.isActive,
+        checkinMode,
         checkinCount,
       },
     });
