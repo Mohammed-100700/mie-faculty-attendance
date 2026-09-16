@@ -36,19 +36,6 @@ const createSession = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Valid active branch is required.' });
     }
 
-    // --- Restored: original unique session-code generation ---
-    let sessionCode;
-    let exists = true;
-    let attempts = 0;
-    while (exists && attempts < 10) {
-      sessionCode = generateSessionCode(5);
-      exists = await AttendanceSession.findOne({ sessionCode });
-      attempts++;
-    }
-    if (exists) {
-      return res.status(500).json({ success: false, message: 'Failed to generate unique session code. Please try again.' });
-    }
-
     // --- Handle explicit workbookId / sheetIndex safely ---
     // Require BOTH workbookId and sheetIndex when either one is supplied.
     // Empty/null workbookId counts as missing.
@@ -158,7 +145,63 @@ const createSession = async (req, res, next) => {
       workbook = workbookResult;
     }
 
-    // --- Original unique session-code generation concludes ---
+    // --- Build rosterSnapshot from selected sheet, BEFORE session creation ---
+    // This is computed once and reused; never re-queried from workbook later.
+    const selectedSheet = workbook.sheets[resolvedSheetIndex];
+
+    // Validate every roster row and build the immutable snapshot
+    const rosterRows = selectedSheet.students;
+
+    // Validate roster integrity: check for missing identity data and duplicates
+    const refSeen = new Set();
+
+    for (const row of rosterRows) {
+      const mieId = String(row.mieStudentId || '').trim();
+      const name = String(row.name || '').trim();
+
+      if (!row.studentRef || !mieId || !name) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Roster integrity error: roster entry is missing required identity data.',
+        });
+      }
+
+      const refStr = String(row.studentRef);
+
+      if (refSeen.has(refStr)) {
+        return res.status(409).json({
+          success: false,
+          message:
+            'Roster integrity error: duplicate studentRef detected in workbook sheet.',
+        });
+      }
+
+      refSeen.add(refStr);
+    }
+
+    // Build the immutable rosterSnapshot exactly once
+    const rosterSnapshot = rosterRows.map((student) => ({
+      studentRef: student.studentRef,
+      mieStudentId: (student.mieStudentId || '').trim(),
+      studentName: (student.name || '').trim(),
+    }));
+
+    // --- Unique session-code generation (after rosterSnapshot) ---
+    // Every retry reuses the SAME precomputed rosterSnapshot; never re-queried.
+    let sessionCode;
+    let exists = true;
+    let attempts = 0;
+    while (exists && attempts < 10) {
+      sessionCode = generateSessionCode(5);
+      exists = await AttendanceSession.findOne({ sessionCode });
+      attempts++;
+    }
+    if (exists) {
+      return res.status(500).json({ success: false, message: 'Failed to generate unique session code. Please try again.' });
+    }
+
+    // --- Session creation uses the same precomputed rosterSnapshot ---
     const now = new Date();
 
     const session = await AttendanceSession.create({
@@ -172,6 +215,7 @@ const createSession = async (req, res, next) => {
       isActive: true,
       workbookId: workbook._id,
       sheetIndex: resolvedSheetIndex,
+      rosterSnapshot,
     });
 
     res.status(201).json({
@@ -325,66 +369,161 @@ const studentCheckin = async (req, res, next) => {
     if (hasWorkbookLink && hasSheetLink) {
       // ====== LINKED SESSION PATH ======
       // studentId means exact mieStudentId
+      if (!studentId || !(studentId || '').trim()) {
+        return res.status(400).json({ success: false, message: 'Student MIE ID is required.' });
+      }
+
+      // Resolve Student exactly once, before branching into snapshot-backed vs pre-C10
+      // This variable is shared by both paths.
       const mieStudentId = (studentId || '').trim();
       if (!mieStudentId) {
         return res.status(400).json({ success: false, message: 'Student MIE ID is required.' });
       }
 
-      // Exact Student lookup by mieStudentId — no name lookup, no auto-creation
       const student = await Student.findOne({ mieStudentId });
       if (!student) {
         return res.status(404).json({ success: false, message: 'Student not found with MIE Student ID: ' + mieStudentId });
       }
 
-      // Validate session's exact workbookId and lecturer ownership
-      const workbook = await Workbook.findOne({
-        _id: session.workbookId,
-        lecturerId: session.lecturerId,
-      });
-      if (!workbook) {
-        return res.status(404).json({ success: false, message: 'Session workbook not found or does not belong to you.' });
-      }
+      // Determine if this is a C10 snapshot-backed session or pre-C10
+      const isSnapshotBackend = session.rosterSnapshot !== undefined;
 
-      // Validate sheetIndex exists in workbook.sheets
-      if (!Number.isInteger(session.sheetIndex) || session.sheetIndex < 0 || session.sheetIndex >= workbook.sheets.length) {
-        return res.status(400).json({ success: false, message: 'Invalid sheetIndex for your workbook.' });
-      }
+      if (isSnapshotBackend) {
+        // --- C10 SNAPSHOT-BACKED PATH ---
+        // Validate snapshot integrity
+        if (!Array.isArray(session.rosterSnapshot)) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot is not a valid array.',
+          });
+        }
 
-      // Roster membership MUST use studentRef — embedded comparison
-      const sheet = workbook.sheets[session.sheetIndex];
-      const isInRoster = sheet.students.some(s => s.studentRef && s.studentRef.equals(student._id));
-      if (!isInRoster) {
-        return res.status(400).json({ success: false, message: 'Student is not in the roster for this sheet.' });
-      }
+        let snapshotValid = true;
+        const seenRefs = new Set();
 
-      // ADD EXPLICIT LINKED DUPLICATE CHECK
-      const existing = await StudentCheckin.findOne({
-        sessionId: session._id,
-        studentRef: student._id,
-      });
-      if (existing) {
-        return res.status(400).json({
-          success: false,
-          message: 'You are already checked in for this session.',
+        for (const entry of session.rosterSnapshot) {
+          if (!entry.studentRef) {
+            snapshotValid = false;
+            break;
+          }
+          const mieId = (entry.mieStudentId || '').trim();
+          if (!mieId) {
+            snapshotValid = false;
+            break;
+          }
+          const sName = (entry.studentName || '').trim();
+          if (!sName) {
+            snapshotValid = false;
+            break;
+          }
+          const refStr = String(entry.studentRef);
+          if (seenRefs.has(refStr)) {
+            snapshotValid = false;
+            break;
+          }
+          seenRefs.add(refStr);
+        }
+
+        if (!snapshotValid) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot is corrupt or has missing/duplicate fields.',
+          });
+        }
+
+        // Membership MUST be determined with studentRef from snapshot
+        const snapshotEntry = session.rosterSnapshot.find(
+          row => String(row.studentRef) === String(student._id)
+        );
+
+        if (!snapshotEntry) {
+          return res.status(400).json({ success: false, message: 'Student is not in the roster for this session.' });
+        }
+
+        // Duplicate prevention
+        const existing = await StudentCheckin.findOne({
+          sessionId: session._id,
+          studentRef: student._id,
+        });
+        if (existing) {
+          return res.status(400).json({
+            success: false,
+            message: 'You are already checked in for this session.',
+          });
+        }
+
+        // Create StudentCheckin with canonical data from snapshot
+        const checkin = await StudentCheckin.create({
+          sessionId: session._id,
+          studentRef: student._id,
+          studentName: snapshotEntry.studentName,
+          studentId: snapshotEntry.mieStudentId,
+          ipAddress: req.ip || '',
+        });
+
+        const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
+
+        res.status(201).json({
+          success: true,
+          message: 'Checked in successfully for ' + session.branch + ' class.',
+          data: { checkin, checkinCount },
+        });
+      } else {
+        // --- PRE-C10 LINKED FALLBACK ---
+        // session.rosterSnapshot === undefined
+        // Preserve the CURRENT C7/C9 workbook-backed behavior exactly
+        // The student variable from the common lookup is reused here
+
+        // Validate session's exact workbookId and lecturer ownership
+        const workbook = await Workbook.findOne({
+          _id: session.workbookId,
+          lecturerId: session.lecturerId,
+        });
+        if (!workbook) {
+          return res.status(404).json({ success: false, message: 'Session workbook not found or does not belong to you.' });
+        }
+
+        // Validate sheetIndex exists in workbook.sheets
+        if (!Number.isInteger(session.sheetIndex) || session.sheetIndex < 0 || session.sheetIndex >= workbook.sheets.length) {
+          return res.status(400).json({ success: false, message: 'Invalid sheetIndex for your workbook.' });
+        }
+
+        // Roster membership MUST use studentRef — embedded comparison
+        const sheet = workbook.sheets[session.sheetIndex];
+        const isInRoster = sheet.students.some(s => s.studentRef && s.studentRef.equals(student._id));
+        if (!isInRoster) {
+          return res.status(400).json({ success: false, message: 'Student is not in the roster for this sheet.' });
+        }
+
+        // ADD EXPLICIT LINKED DUPLICATE CHECK
+        const existing = await StudentCheckin.findOne({
+          sessionId: session._id,
+          studentRef: student._id,
+        });
+        if (existing) {
+          return res.status(400).json({
+            success: false,
+            message: 'You are already checked in for this session.',
+          });
+        }
+
+        // Create StudentCheckin with canonical data
+        const checkin = await StudentCheckin.create({
+          sessionId: session._id,
+          studentRef: student._id,
+          studentName: student.name,
+          studentId: student.mieStudentId,
+          ipAddress: req.ip || '',
+        });
+
+        const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
+
+        res.status(201).json({
+          success: true,
+          message: 'Checked in successfully for ' + session.branch + ' class.',
+          data: { checkin, checkinCount },
         });
       }
-
-      // Create StudentCheckin with canonical data (ignore user-supplied studentName)
-      const checkin = await StudentCheckin.create({
-        sessionId: session._id,
-        studentRef: student._id,
-        studentName: student.name,
-        studentId: student.mieStudentId,
-        ipAddress: req.ip || '',
-      });
-
-      const checkinCount = await StudentCheckin.countDocuments({ sessionId: session._id });
-
-      res.status(201).json({
-        success: true,
-        message: 'Checked in successfully for ' + session.branch + ' class.',
-        data: { checkin, checkinCount },
-      });
     } else {
       // ====== LEGACY SESSION PATH ======
       // studentName is required for legacy sessions
@@ -458,133 +597,258 @@ const getCheckins = async (req, res, next) => {
 
     if (hasWorkbookLink && hasSheetLink) {
       // ====== LINKED PATH ======
+      // Distinguish C10 snapshot-backed vs pre-C10 linked sessions
+      if (session.rosterSnapshot !== undefined) {
+        // --- C10 SNAPSHOT-BACKED PATH ---
+        // Derive attendance ONLY from rosterSnapshot — do NOT query Workbook
 
-      // 1. Validate workbook ownership
-      const workbook = await Workbook.findOne({
-        _id: session.workbookId,
-        lecturerId: session.lecturerId,
-      });
-      if (!workbook) {
-        return res.status(404).json({
-          success: false,
-          message:
-            'Session workbook not found or does not belong to you.',
+        // Validate snapshot integrity
+        if (!Array.isArray(session.rosterSnapshot)) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot is not a valid array.',
+          });
+        }
+
+        let snapshotValid = true;
+        const seenRefs = new Set();
+
+        for (const entry of session.rosterSnapshot) {
+          if (!entry.studentRef) {
+            snapshotValid = false;
+            break;
+          }
+          const mieId = (entry.mieStudentId || '').trim();
+          if (!mieId) {
+            snapshotValid = false;
+            break;
+          }
+          const sName = (entry.studentName || '').trim();
+          if (!sName) {
+            snapshotValid = false;
+            break;
+          }
+          const refStr = String(entry.studentRef);
+          if (seenRefs.has(refStr)) {
+            snapshotValid = false;
+            break;
+          }
+          seenRefs.add(refStr);
+        }
+
+        if (!snapshotValid) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot is corrupt or has missing/duplicate fields.',
+          });
+        }
+
+        // Fetch StudentCheckin rows once
+        const checkins = await StudentCheckin.find({
+          sessionId: session._id,
+        }).sort({ checkedInAt: 1 });
+
+        // Validate checkins
+        // Every checkin MUST have a non-null studentRef
+        for (const checkin of checkins) {
+          if (!checkin.studentRef) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Checkin integrity error: a checkin record is missing studentRef.',
+            });
+          }
+        }
+
+        // Every checkin.studentRef MUST exist in rosterSnapshot
+        const rosterRefSet = new Set();
+        for (const entry of session.rosterSnapshot) {
+          rosterRefSet.add(String(entry.studentRef));
+        }
+
+        for (const checkin of checkins) {
+          const refStr = String(checkin.studentRef);
+          if (!rosterRefSet.has(refStr)) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Checkin integrity error: a checkin record has studentRef not in current roster.',
+            });
+          }
+        }
+
+        // Build checkin Map: keyed by String(studentRef)
+        const checkinMap = new Map();
+        for (const checkin of checkins) {
+          checkinMap.set(String(checkin.studentRef), checkin);
+        }
+
+        // Derive attendance in ORIGINAL snapshot order
+        const attendanceRows = [];
+        let presentCount = 0;
+
+        for (const snapshotStudent of session.rosterSnapshot) {
+          const studentRefStr = String(snapshotStudent.studentRef);
+          const matchingCheckin = checkinMap.get(studentRefStr);
+          const status = matchingCheckin ? 'present' : 'absent';
+
+          attendanceRows.push({
+            studentRef: snapshotStudent.studentRef,
+            mieStudentId: snapshotStudent.mieStudentId,
+            studentName: snapshotStudent.studentName,
+            status,
+            checkedInAt: matchingCheckin ? matchingCheckin.checkedInAt : null,
+          });
+
+          if (status === 'present') {
+            presentCount++;
+          }
+        }
+
+        const absentCount = session.rosterSnapshot.length - presentCount;
+
+        res.json({
+          success: true,
+          mode: 'linked',
+          summary: {
+            rosterCount: session.rosterSnapshot.length,
+            presentCount,
+            absentCount,
+          },
+          data: attendanceRows,
+        });
+      } else {
+        // --- PRE-C10 LINKED FALLBACK ---
+        // session.rosterSnapshot === undefined
+        // Retain the existing C9 workbook-backed implementation exactly
+
+        // 1. Validate workbook ownership
+        const workbook = await Workbook.findOne({
+          _id: session.workbookId,
+          lecturerId: session.lecturerId,
+        });
+        if (!workbook) {
+          return res.status(404).json({
+            success: false,
+            message:
+              'Session workbook not found or does not belong to you.',
+          });
+        }
+
+        // 2. Validate sheetIndex
+        if (
+          !Number.isInteger(session.sheetIndex) ||
+          session.sheetIndex < 0 ||
+          session.sheetIndex >= workbook.sheets.length
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid sheetIndex for your workbook.',
+          });
+        }
+
+        // 3. linked roster integrity
+        const roster = workbook.sheets[session.sheetIndex].students;
+
+        // Every roster row MUST have studentRef
+        for (const rosterStudent of roster) {
+          if (!rosterStudent.studentRef) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Roster integrity error: a roster entry is missing studentRef.',
+            });
+          }
+        }
+
+        // Detect duplicate studentRef values in roster
+        const refSeen = new Set();
+        for (const rosterStudent of roster) {
+          const refStr = rosterStudent.studentRef.toString();
+          if (refSeen.has(refStr)) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Roster integrity error: duplicate studentRef detected in workbook sheet.',
+            });
+          }
+          refSeen.add(refStr);
+        }
+
+        // 4. linked checkin integrity
+        const checkins = await StudentCheckin.find({
+          sessionId: session._id,
+        }).sort({ checkedInAt: 1 });
+
+        // Every checkin MUST have a non-null studentRef
+        for (const checkin of checkins) {
+          if (!checkin.studentRef) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Checkin integrity error: a checkin record is missing studentRef.',
+            });
+          }
+        }
+
+        // Every checkin.studentRef MUST be in the roster identity Set
+        const rosterRefSet = new Set();
+        for (const rosterStudent of roster) {
+          rosterRefSet.add(rosterStudent.studentRef.toString());
+        }
+
+        for (const checkin of checkins) {
+          const refStr = checkin.studentRef.toString();
+          if (!rosterRefSet.has(refStr)) {
+            return res.status(409).json({
+              success: false,
+              message:
+                'Checkin integrity error: a checkin record has studentRef not in current roster.',
+            });
+          }
+        }
+
+        // 5. Build checkin Map: keyed by String(studentRef)
+        const checkinMap = new Map();
+        for (const checkin of checkins) {
+          checkinMap.set(checkin.studentRef.toString(), checkin);
+        }
+
+        // 6. Derive attendance from roster in original order
+        const attendanceRows = [];
+        let presentCount = 0;
+
+        for (const rosterStudent of roster) {
+          const studentRefStr = rosterStudent.studentRef.toString();
+          const matchingCheckin = checkinMap.get(studentRefStr);
+          const status = matchingCheckin ? 'present' : 'absent';
+
+          attendanceRows.push({
+            studentRef: rosterStudent.studentRef,
+            mieStudentId: rosterStudent.mieStudentId,
+            studentName: rosterStudent.name,
+            status,
+            checkedInAt: matchingCheckin ? matchingCheckin.checkedInAt : null,
+          });
+
+          if (status === 'present') {
+            presentCount++;
+          }
+        }
+
+        const absentCount = roster.length - presentCount;
+
+        res.json({
+          success: true,
+          mode: 'linked',
+          summary: {
+            rosterCount: roster.length,
+            presentCount,
+            absentCount,
+          },
+          data: attendanceRows,
         });
       }
-
-      // 2. Validate sheetIndex
-      if (
-        !Number.isInteger(session.sheetIndex) ||
-        session.sheetIndex < 0 ||
-        session.sheetIndex >= workbook.sheets.length
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid sheetIndex for your workbook.',
-        });
-      }
-
-      // 3. linked roster integrity
-      const roster = workbook.sheets[session.sheetIndex].students;
-
-      // Every roster row MUST have studentRef
-      for (const rosterStudent of roster) {
-        if (!rosterStudent.studentRef) {
-          return res.status(409).json({
-            success: false,
-            message:
-              'Roster integrity error: a roster entry is missing studentRef.',
-          });
-        }
-      }
-
-      // Detect duplicate studentRef values in roster
-      const refSeen = new Set();
-      for (const rosterStudent of roster) {
-        const refStr = rosterStudent.studentRef.toString();
-        if (refSeen.has(refStr)) {
-          return res.status(409).json({
-            success: false,
-            message:
-              'Roster integrity error: duplicate studentRef detected in workbook sheet.',
-          });
-        }
-        refSeen.add(refStr);
-      }
-
-      // 4. linked checkin integrity
-      const checkins = await StudentCheckin.find({
-        sessionId: session._id,
-      }).sort({ checkedInAt: 1 });
-
-      // Every checkin MUST have a non-null studentRef
-      for (const checkin of checkins) {
-        if (!checkin.studentRef) {
-          return res.status(409).json({
-            success: false,
-            message:
-              'Checkin integrity error: a checkin record is missing studentRef.',
-          });
-        }
-      }
-
-      // Every checkin.studentRef MUST be in the roster identity Set
-      const rosterRefSet = new Set();
-      for (const rosterStudent of roster) {
-        rosterRefSet.add(rosterStudent.studentRef.toString());
-      }
-
-      for (const checkin of checkins) {
-        const refStr = checkin.studentRef.toString();
-        if (!rosterRefSet.has(refStr)) {
-          return res.status(409).json({
-            success: false,
-            message:
-              'Checkin integrity error: a checkin record has studentRef not in current roster.',
-          });
-        }
-      }
-
-      // 5. Build checkin Map: keyed by String(studentRef)
-      const checkinMap = new Map();
-      for (const checkin of checkins) {
-        checkinMap.set(checkin.studentRef.toString(), checkin);
-      }
-
-      // 6. Derive attendance from roster in original order
-      const attendanceRows = [];
-      let presentCount = 0;
-
-      for (const rosterStudent of roster) {
-        const studentRefStr = rosterStudent.studentRef.toString();
-        const matchingCheckin = checkinMap.get(studentRefStr);
-        const status = matchingCheckin ? 'present' : 'absent';
-
-        attendanceRows.push({
-          studentRef: rosterStudent.studentRef,
-          mieStudentId: rosterStudent.mieStudentId,
-          studentName: rosterStudent.name,
-          status,
-          checkedInAt: matchingCheckin ? matchingCheckin.checkedInAt : null,
-        });
-
-        if (status === 'present') {
-          presentCount++;
-        }
-      }
-
-      const absentCount = roster.length - presentCount;
-
-      res.json({
-        success: true,
-        mode: 'linked',
-        summary: {
-          rosterCount: roster.length,
-          presentCount,
-          absentCount,
-        },
-        data: attendanceRows,
-      });
     } else {
       // ====== LEGACY PATH ======
 

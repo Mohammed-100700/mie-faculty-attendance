@@ -1,5 +1,29 @@
 const mongoose = require('mongoose');
 
+const rosterSnapshotStudentSchema = new mongoose.Schema(
+  {
+    studentRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: 'Student',
+    },
+    mieStudentId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    studentName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+  }
+);
+
 const attendanceSessionSchema = new mongoose.Schema(
   {
     lecturerId: {
@@ -52,6 +76,10 @@ const attendanceSessionSchema = new mongoose.Schema(
     sheetIndex: {
       type: Number,
       default: null,
+    },
+    rosterSnapshot: {
+      type: [rosterSnapshotStudentSchema],
+      default: undefined,
     },
   },
   { timestamps: true }
