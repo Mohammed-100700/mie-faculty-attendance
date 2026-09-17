@@ -366,6 +366,16 @@ const studentCheckin = async (req, res, next) => {
       });
     }
 
+    // Block public self-checkin for lecturer-managed snapshot-backed sessions
+    // Must occur BEFORE Student.findOne(), Workbook query, or StudentCheckin operations
+    if (session.rosterSnapshot !== undefined) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Student self check-in is not available for lecturer-managed attendance sessions.'
+      });
+    }
+
     if (hasWorkbookLink && hasSheetLink) {
       // ====== LINKED SESSION PATH ======
       // studentId means exact mieStudentId
@@ -384,6 +394,7 @@ const studentCheckin = async (req, res, next) => {
       if (!student) {
         return res.status(404).json({ success: false, message: 'Student not found with MIE Student ID: ' + mieStudentId });
       }
+
 
       // Determine if this is a C10 snapshot-backed session or pre-C10
       const isSnapshotBackend = session.rosterSnapshot !== undefined;
@@ -565,6 +576,283 @@ const studentCheckin = async (req, res, next) => {
   }
 };
 
+const canonicalRef = (ref) => new mongoose.Types.ObjectId(ref).toString();
+
+// @desc    Save manual attendance for a snapshot-backed session
+// @route   PUT /api/attendance-sessions/:id/attendance
+const saveAttendance = async (req, res, next) => {
+  try {
+    const session = await AttendanceSession.findOne({
+      _id: req.params.id,
+      lecturerId: req.user._id,
+    });
+
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Session not found.' });
+    }
+
+    // Check if session is active
+    if (!session.isActive) {
+      return res.status(400).json({ success: false, message: 'Cannot modify attendance for a closed session.' });
+    }
+
+    // Check if session is C10 snapshot-backed
+    if (session.rosterSnapshot === undefined || !Array.isArray(session.rosterSnapshot)) {
+      return res.status(400).json({ success: false, message: 'Manual attendance is only available for snapshot-backed sessions.' });
+    }
+
+    // Validate snapshot integrity before any writes
+    // C10: every rosterSnapshot entry must have studentRef, mieStudentId, studentName, no duplicates
+    if (session.rosterSnapshot.length > 0) {
+      const seenRefs = new Set();
+      for (const entry of session.rosterSnapshot) {
+        if (!entry.studentRef) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot entry is missing studentRef.',
+          });
+        }
+        if (!entry.mieStudentId || entry.mieStudentId.trim() === '') {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot entry is missing mieStudentId.',
+          });
+        }
+        if (!entry.studentName || entry.studentName.trim() === '') {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: rosterSnapshot entry is missing studentName.',
+          });
+        }
+        const refStr = canonicalRef(String(entry.studentRef));
+        if (seenRefs.has(refStr)) {
+          return res.status(409).json({
+            success: false,
+            message: 'Snapshot integrity error: duplicate studentRef in rosterSnapshot.',
+          });
+        }
+        seenRefs.add(refStr);
+      }
+    }
+
+    // Validate request body
+    const { presentStudentRefs } = req.body;
+    if (presentStudentRefs === undefined) {
+      return res.status(400).json({ success: false, message: 'presentStudentRefs is required.' });
+    }
+
+    // presentStudentRefs must be an array
+    if (!Array.isArray(presentStudentRefs)) {
+      return res.status(400).json({ success: false, message: 'presentStudentRefs must be an array.' });
+    }
+
+    // Canonicalize presentStudentRefs
+    const presentStudentRefsCanonical = [];
+    for (const ref of presentStudentRefs) {
+      if (!mongoose.isValidObjectId(ref)) {
+        return res.status(400).json({ success: false, message: 'Invalid ObjectId in presentStudentRefs.' });
+      }
+      presentStudentRefsCanonical.push(canonicalRef(ref));
+    }
+
+    // Reject duplicate canonical refs
+    const refSet = new Set();
+    for (const ref of presentStudentRefsCanonical) {
+      if (refSet.has(ref)) {
+        return res.status(400).json({ success: false, message: 'Duplicate studentRef in presentStudentRefs.' });
+      }
+      refSet.add(ref);
+    }
+
+    // Every ref must belong to rosterSnapshot (membership by canonical studentRef only)
+    const rosterRefSet = new Set();
+    for (const entry of session.rosterSnapshot) {
+      rosterRefSet.add(canonicalRef(String(entry.studentRef)));
+    }
+
+    for (const ref of presentStudentRefsCanonical) {
+      if (!rosterRefSet.has(ref)) {
+        return res.status(400).json({ success: false, message: 'Student is not in the roster for this session.' });
+      }
+    }
+
+    // --- Validate existing checkin integrity before writes ---
+
+    const existingCheckins = await StudentCheckin.find({ sessionId: session._id }).select('studentRef _id');
+
+    // Every existing checkin MUST have a non-null studentRef
+    for (const c of existingCheckins) {
+      if (!c.studentRef) {
+        return res.status(409).json({
+          success: false,
+          message: 'Checkin integrity error: a checkin record is missing studentRef.',
+        });
+      }
+    }
+
+    // Every existing checkin.studentRef MUST belong to rosterSnapshot
+    const existingCheckinRefs = new Set();
+    for (const c of existingCheckins) {
+      existingCheckinRefs.add(canonicalRef(String(c.studentRef)));
+    }
+    for (const ref of existingCheckinRefs) {
+      if (!rosterRefSet.has(ref)) {
+        return res.status(409).json({
+          success: false,
+          message:
+            'Checkin integrity error: a checkin record has studentRef not in current roster.',
+        });
+      }
+    }
+
+    // No duplicate StudentCheckin studentRef values for the session
+    const refCounts = {};
+    for (const c of existingCheckins) {
+      const r = canonicalRef(String(c.studentRef));
+      refCounts[r] = (refCounts[r] || 0) + 1;
+    }
+    for (const [r, c] of Object.entries(refCounts)) {
+      if (c > 1) {
+        return res.status(409).json({
+          success: false,
+          message: 'Checkin integrity error: duplicate studentRef values in checkins for this session.',
+        });
+      }
+    }
+
+    // --- Synchronize StudentCheckin records ---
+
+    // Canonical selected set
+    const selectedSet = new Set(presentStudentRefsCanonical);
+
+    // Students to add: in roster and selected, but not already checked in
+    const toAdd = [];
+    for (const entry of session.rosterSnapshot) {
+      const refStr = canonicalRef(String(entry.studentRef));
+      if (selectedSet.has(refStr)) {
+        // This student should be present
+        if (!existingCheckinRefs.has(refStr)) {
+          toAdd.push({
+            sessionId: session._id,
+            studentRef: entry.studentRef,
+            studentName: entry.studentName,
+            studentId: entry.mieStudentId,
+          });
+        }
+        // If already checked in, preserve existing checkedInAt (do nothing)
+      }
+    }
+
+    // Students to remove: checked in but not in selected set
+    const toRemove = [];
+    for (const c of existingCheckins) {
+      if (c.studentRef && !selectedSet.has(canonicalRef(String(c.studentRef)))) {
+        toRemove.push(c._id);
+      }
+    }
+
+    // Shared timestamp for new records
+    const now = new Date();
+
+    // Perform bulk writes
+    const bulkOps = [];
+
+    // Delete operations for removed students
+    for (const removeId of toRemove) {
+      bulkOps.push({
+        deleteOne: { filter: { _id: removeId } },
+      });
+    }
+
+    // Insert operations for added students
+    for (const add of toAdd) {
+      bulkOps.push({
+        insertOne: {
+          document: {
+            sessionId: add.sessionId,
+            studentRef: add.studentRef,
+            studentName: add.studentName,
+            studentId: add.studentId,
+            checkedInAt: now,
+            ipAddress: '',
+          },
+        },
+      });
+    }
+
+    if (bulkOps.length > 0) {
+      await StudentCheckin.bulkWrite(bulkOps);
+    }
+
+    // Re-fetch checkins to build response
+    const checkins = await StudentCheckin.find({ sessionId: session._id })
+      .sort({ checkedInAt: 1 })
+      .select('studentRef studentName studentId checkedInAt');
+
+    // Build checkin map keyed by canonical String(studentRef)
+    const checkinMap = new Map();
+    for (const c of checkins) {
+      if (c.studentRef) {
+        checkinMap.set(canonicalRef(String(c.studentRef)), c);
+      }
+    }
+
+    // Build attendance rows in original snapshot order
+    const attendanceRows = [];
+    let presentCount = 0;
+
+    for (const snapshotStudent of session.rosterSnapshot) {
+      const studentRefStr = canonicalRef(String(snapshotStudent.studentRef));
+      const matchingCheckin = checkinMap.get(studentRefStr);
+      const status = matchingCheckin ? 'present' : 'absent';
+
+      attendanceRows.push({
+        studentRef: snapshotStudent.studentRef,
+        mieStudentId: snapshotStudent.mieStudentId,
+        studentName: snapshotStudent.studentName,
+        ncukId: null,
+        status,
+        checkedInAt: matchingCheckin ? matchingCheckin.checkedInAt : null,
+      });
+
+      if (status === 'present') {
+        presentCount++;
+      }
+    }
+
+    const absentCount = session.rosterSnapshot.length - presentCount;
+
+    // NCUK enrichment: bulk fetch current Student records by snapshot studentRef
+    // one Student.find query, no N+1
+    const studentRefs = session.rosterSnapshot.map(s => s.studentRef);
+    const students = await Student.find({ _id: { $in: studentRefs } }).select('ncukId');
+    const ncukIdMap = new Map();
+    for (const s of students) {
+      ncukIdMap.set(canonicalRef(String(s._id)), s.ncukId || null);
+    }
+
+    // Attach ncukId to each row
+    const rowsWithNcuk = attendanceRows.map(row => ({
+      ...row,
+      ncukId: ncukIdMap.get(canonicalRef(String(row.studentRef))) || null,
+    }));
+
+    // Align PUT response contract with GET: mode, summary, data
+    res.json({
+      success: true,
+      mode: 'linked',
+      summary: {
+        rosterCount: session.rosterSnapshot.length,
+        presentCount,
+        absentCount,
+      },
+      data: rowsWithNcuk,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Get checkins for a session
 // @route   GET /api/attendance-sessions/:id/checkins
 const getCheckins = async (req, res, next) => {
@@ -707,6 +995,19 @@ const getCheckins = async (req, res, next) => {
 
         const absentCount = session.rosterSnapshot.length - presentCount;
 
+        // NCUK enrichment: bulk fetch current Student records by snapshot studentRef
+        const studentRefs = session.rosterSnapshot.map(s => s.studentRef);
+        const students = await Student.find({ _id: { $in: studentRefs } }).select('ncukId');
+        const ncukIdMap = new Map();
+        for (const s of students) {
+          ncukIdMap.set(canonicalRef(String(s._id)), s.ncukId || null);
+        }
+        // Attach ncukId to each row using canonical studentRef strings
+        const rowsWithNcuk = attendanceRows.map(row => ({
+          ...row,
+          ncukId: ncukIdMap.get(canonicalRef(String(row.studentRef))) || null,
+        }));
+
         res.json({
           success: true,
           mode: 'linked',
@@ -715,7 +1016,7 @@ const getCheckins = async (req, res, next) => {
             presentCount,
             absentCount,
           },
-          data: attendanceRows,
+          data: rowsWithNcuk,
         });
       } else {
         // --- PRE-C10 LINKED FALLBACK ---
@@ -910,6 +1211,7 @@ module.exports = {
   getSession,
   getSessionByCode,
   closeSession,
+  saveAttendance,
   studentCheckin,
   getCheckins,
   getReports,

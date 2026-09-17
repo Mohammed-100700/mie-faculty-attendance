@@ -6,6 +6,7 @@ const {
   getSession,
   getSessionByCode,
   closeSession,
+  saveAttendance,
   studentCheckin,
   getCheckins,
   getReports,
@@ -26,6 +27,7 @@ router.get('/my', protect, getMySessions);
 router.get('/:id', protect, getSession);
 router.get('/:id/checkins', protect, getCheckins);
 router.put('/:id/close', protect, closeSession);
+router.put('/:id/attendance', protect, saveAttendance);
 router.post('/:id/checkin', studentCheckin);
 
 module.exports = router;
