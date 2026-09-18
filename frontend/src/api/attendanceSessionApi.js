@@ -21,6 +21,9 @@ export const getSessionByCode = (code) =>
 export const studentCheckin = (id, payload) =>
   api.post(`/attendance-sessions/${id}/checkin`, payload);
 
+export const saveAttendance = (id, presentStudentRefs) =>
+  api.put(`/attendance-sessions/${id}/attendance`, { presentStudentRefs });
+
 // Reports (Executive Office)
 export const getReports = (batch, branch, subject) =>
   api.get('/attendance-sessions/reports', { params: { batch, branch, subject } });

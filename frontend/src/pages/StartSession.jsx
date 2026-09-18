@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlay, FiStopCircle, FiCheckCircle, FiCopy, FiUsers } from 'react-icons/fi';
-import QRCode from 'qrcode';
+import { FiPlay, FiStopCircle, FiCheckCircle, FiUsers } from 'react-icons/fi';
 import { createSession, getSession, closeSession } from '../api/attendanceSessionApi';
 import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
@@ -46,22 +45,6 @@ const StartSession = () => {
   const [batch, setBatch] = useState('September');
   const [subject, setSubject] = useState('');
   const [checkinCount, setCheckinCount] = useState(0);
-  const [copied, setCopied] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState('');
-
-  const checkinUrl = session
-    ? `${window.location.origin}/checkin/${session.sessionCode}`
-    : '';
-
-  // Generate QR code when session is created
-  useEffect(() => {
-    if (session) {
-      QRCode.toDataURL(checkinUrl, { width: 200, margin: 2 })
-        .then(setQrDataUrl)
-        .catch(() => {});
-    }
-  }, [session, checkinUrl]);
-
   // Poll for checkin count
   const pollCount = useCallback(async () => {
     if (!session) return;
@@ -95,7 +78,7 @@ const StartSession = () => {
 
   const handleClose = async () => {
     if (!session) return;
-    if (!window.confirm('Close this session? Students will no longer be able to check in.')) return;
+    if (!window.confirm('Close this session? Attendance will become read-only.')) return;
     try {
       await closeSession(session._id);
       navigate(`/session/${session._id}/checkins`);
@@ -104,42 +87,20 @@ const StartSession = () => {
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(checkinUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   // Active session view
   if (session) {
     return (
       <div className="max-w-lg mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Attendance Session Active</h1>
-          <p className="text-gray-500">Share this code with your students</p>
+          <p className="text-gray-500">Session in progress</p>
         </div>
 
-        {/* Session code display */}
-        <div className="card bg-gradient-to-r from-primary-500 to-primary-700 text-white text-center">
-          <p className="text-primary-100 text-sm mb-2">Session Code</p>
-          <p className="text-5xl font-mono font-bold tracking-widest">{session.sessionCode}</p>
-          <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-            <span className="text-primary-200 text-sm">{session.batch} • {session.branch}</span>
-            {session.subject && <span className="text-primary-200 text-sm">• {session.subject}</span>}
-          </div>
+        <div className="card space-y-2">
+          <p><span className="text-gray-500">Branch:</span> {session.branch}</p>
+          <p><span className="text-gray-500">Batch:</span> {session.batch}</p>
+          {session.subject && <p><span className="text-gray-500">Subject:</span> {session.subject}</p>}
         </div>
-
-        {/* QR Code */}
-        {qrDataUrl && (
-          <div className="card text-center">
-            <p className="text-sm text-gray-500 mb-3">Or scan this QR code</p>
-            <img src={qrDataUrl} alt="Check-in QR Code" className="mx-auto w-48 h-48" />
-            <button onClick={handleCopy} className="text-sm text-primary-600 hover:underline mt-2 flex items-center gap-1 mx-auto">
-              <FiCopy className="w-3.5 h-3.5" />
-              {copied ? 'Copied!' : 'Copy check-in link'}
-            </button>
-          </div>
-        )}
 
         {/* Live count */}
         <div className="card flex items-center justify-between">
@@ -148,7 +109,7 @@ const StartSession = () => {
               <FiUsers className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Students Checked In</p>
+              <p className="text-sm text-gray-500">Students Present</p>
               <p className="text-3xl font-bold text-gray-900">{checkinCount}</p>
             </div>
           </div>
@@ -158,14 +119,14 @@ const StartSession = () => {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions - simplified, no QR/self-check-in */}
         <div className="flex gap-3">
           <button
             onClick={() => navigate(`/session/${session._id}/checkins`)}
             className="btn-secondary flex-1 flex items-center justify-center gap-2"
           >
             <FiCheckCircle className="w-4 h-4" />
-            View Check-ins
+            Manage Attendance
           </button>
           <button
             onClick={handleClose}
@@ -184,7 +145,7 @@ const StartSession = () => {
     <div className="max-w-md mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Start Attendance Session</h1>
-        <p className="text-gray-500">Create a session for students to check in</p>
+        <p className="text-gray-500">Create a session to record student attendance</p>
       </div>
 
       <div className="card">
