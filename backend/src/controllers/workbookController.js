@@ -8,6 +8,13 @@ function sanitize(str, maxLen = 200) {
   return str.replace(/<[^>]*>/g, '').trim().substring(0, maxLen);
 }
 
+// Throw controlled errors with statusCode for use throughout this module
+function throwStatus(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+}
+
 // @desc    Get workbook
 // @route   GET /api/workbook
 const getWorkbook = async (req, res, next) => {
@@ -294,22 +301,114 @@ const addStudent = async (req, res, next) => {
 // @desc    Update a student's NCUK ID
 // @route   PUT /api/workbook/sheets/:sheetIndex/students/:studentIndex/ncukId
 const updateStudentNcukId = async (req, res, next) => {
+  let dbSession;
   try {
-    const { sheetIndex, studentIndex } = req.params;
-    const { ncukId } = req.body;
+    // 1. ROUTE PARAMETER PARSING — convert strings from req.params
+    let sheetIndex = Number(req.params.sheetIndex);
+    let studentIndex = Number(req.params.studentIndex);
+
+    if (
+      !Number.isInteger(sheetIndex) ||
+      sheetIndex < 0 ||
+      !Number.isInteger(studentIndex) ||
+      studentIndex < 0
+    ) {
+      throwStatus('Invalid sheet or student index.', 400);
+    }
+
+    // 2. INPUT NORMALIZATION
+    let { ncukId } = req.body;
+    if (ncukId == null || typeof ncukId !== 'string') {
+      throwStatus('Invalid NCUK ID: must be a string.', 400);
+    }
+    ncukId = sanitize(ncukId, 50);
+    const isEmpty = ncukId === '';
+
+    // 3. LOAD OWNED WORKBOOK — Mongoose document (no .lean()), so .save() works
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    if (!workbook) throwStatus('Not found.', 404);
 
+    // 4. VALIDATE SHEET AND STUDENT INDEXES
     const sheet = workbook.sheets[sheetIndex];
-    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
-    const student = sheet.students[studentIndex];
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found.' });
-    student.ncukId = ncukId ? sanitize(ncukId, 50) : '';
+    if (!sheet) throwStatus('Sheet not found.', 404);
 
-    await workbook.save();
-    res.json({ success: true, data: workbook });
+    const studentRow = sheet.students[studentIndex];
+    if (!studentRow) throwStatus('Student not found.', 404);
+
+    // 5. LEGACY ROW PATH — no studentRef
+    if (!studentRow.studentRef) {
+      studentRow.ncukId = isEmpty ? '' : ncukId;
+      await workbook.save();
+      return res.json({ success: true, data: workbook });
+    }
+
+    // 6. REAL TRANSACTION SESSION
+    dbSession = await mongoose.startSession();
+    let updatedWorkbook;
+
+    await dbSession.withTransaction(async () => {
+      // Re-fetch owned workbook using .session(dbSession)
+      const tWorkbook = await Workbook.findOne({ lecturerId: req.user._id }).session(dbSession);
+      if (!tWorkbook) throwStatus('Not found.', 404);
+
+      const tSheet = tWorkbook.sheets[sheetIndex];
+      if (!tSheet) throwStatus('Sheet not found.', 404);
+
+      const tStudentRow = tSheet.students[studentIndex];
+      if (!tStudentRow) throwStatus('Student not found.', 404);
+
+      // If re-fetched row still has no studentRef, workbook-only update
+      if (!tStudentRow.studentRef) {
+        tStudentRow.ncukId = isEmpty ? '' : ncukId;
+        await tWorkbook.save({ session: dbSession });
+        updatedWorkbook = tWorkbook;
+        return;
+      }
+
+      // Load canonical Student strictly by studentRef using the session
+      const canonicalStudent = await Student.findById(tStudentRow.studentRef).session(dbSession);
+      if (!canonicalStudent) throwStatus('Integrity error: studentRef has no matching Student document.', 409);
+
+      // Duplicate preflight: for non-empty ID, check another Student already owns it
+      if (!isEmpty) {
+        const existing = await Student.findOne({
+          ncukId,
+          _id: { $ne: canonicalStudent._id },
+        }).session(dbSession);
+        if (existing) {
+          throwStatus('Integrity error: NCUK ID already belongs to another student.', 409);
+        }
+      }
+
+      // Set canonical Student.ncukId
+      canonicalStudent.ncukId = isEmpty ? null : ncukId;
+      await canonicalStudent.save({ session: dbSession });
+
+      // Set the selected workbook row ncukId
+      tStudentRow.ncukId = isEmpty ? '' : ncukId;
+
+      // Save the workbook within the transaction
+      await tWorkbook.save({ session: dbSession });
+      updatedWorkbook = tWorkbook;
+    });
+
+    return res.json({ success: true, data: updatedWorkbook });
   } catch (error) {
+    // 7. CONVERT MongoDB duplicate-key 11000 to controlled 409
+    if (
+      error.code === 11000 &&
+      (error.keyPattern?.ncukId || error.keyValue?.ncukId)
+    ) {
+      const conflictError = new Error(
+        'NCUK ID already belongs to another student.'
+      );
+      conflictError.statusCode = 409;
+      return next(conflictError);
+    }
     next(error);
+  } finally {
+    // 8. SESSION CLEANUP
+    if (dbSession) await dbSession.endSession();
   }
 };
 
