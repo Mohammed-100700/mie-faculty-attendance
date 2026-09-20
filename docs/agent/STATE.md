@@ -1,8 +1,8 @@
 # Project State
 
-Updated: 2026-09-20
+Updated: 2026-09-21
 Branch: `feature/student-attendance-v2`
-Latest completed work: C13 plus the NCUK canonical-sync fix (`68dd166`)
+Latest completed work: C14 lecturer attendance session history (`cbe6ed6`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -16,6 +16,7 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Manual attendance saves the complete set of present student refs. An empty set is valid.
 - Starting attendance uses a lecturer-owned workbook sheet and preserves its original `sheetIndex`, including index `0`.
 - Workbook NCUK ID updates synchronize to the canonical linked Student inside a transaction. Legacy rows without `studentRef` remain workbook-only.
+- The lecturer attendance-session page lists active and closed sessions independently from workbook loading. Resume and Review both use the existing session check-in route, which remains responsible for editability.
 
 ## Completed checkpoints
 
@@ -24,7 +25,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C12: lecturer manual attendance UI — `a1a8299`
 - C13: start attendance from workbook sheets — `0b27220`
 - NCUK canonical sync — `68dd166`
+- C14: lecturer attendance session history — `cbe6ed6`
 
 ## Current task
 
-The harness setup is the active uncommitted maintenance change. After it is accepted, replace `docs/agent/NEXT.md` with the next product checkpoint before asking OpenCode to implement anything.
+No product checkpoint is active. `docs/agent/NEXT.md` is `EMPTY`. Plan the next checkpoint before modifying application code.
