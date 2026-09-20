@@ -1,228 +1,191 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlay, FiStopCircle, FiCheckCircle, FiUsers } from 'react-icons/fi';
-import { createSession, getSession, closeSession } from '../api/attendanceSessionApi';
-import { getBranches } from '../api/branchApi';
+import { FiPlay } from 'react-icons/fi';
+import { createSessionFromSheet } from '../api/attendanceSessionApi';
+import { getWorkbook } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
 
 const StartSession = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [availableBranches, setAvailableBranches] = useState([]);
-  const [branch, setBranch] = useState('');
+  const [workbook, setWorkbook] = useState(null);
+  const [loading, setLoading] = useState('loading');
+  const [selectedSheetIndex, setSelectedSheetIndex] = useState(null);
+  const [error, setError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    const fetchBranches = async () => {
-      try {
-        const res = await getBranches();
-
-        const assignedBranchNames = new Set(
-          (user?.branches || []).map((branchName) => String(branchName))
-        );
-
-        const branchNames = (res.data.data || [])
-          .filter((item) => assignedBranchNames.has(item.name))
-          .map((item) => item.name);
-
-        setAvailableBranches(branchNames);
-
-        setBranch((current) =>
-          branchNames.includes(current)
-            ? current
-            : branchNames[0] || ''
-        );
-      } catch (err) {
-        console.error('Failed to fetch branches:', err);
+    if (!user) return;
+    let cancelled = false;
+    setError(null);
+    setLoading('loading');
+    getWorkbook().then((res) => {
+      if (!cancelled) {
+        setWorkbook(res.data.data);
+        setLoading('idle');
       }
+    }).catch((err) => {
+      if (!cancelled) {
+        setError('Failed to load workbook. Retry.');
+        setLoading('error');
+      }
+    });
+    return () => {
+      cancelled = true;
     };
+  }, [user, retryCount]);
 
-    if (user) {
-      fetchBranches();
-    }
-  }, [user]);
-  const [batch, setBatch] = useState('September');
-  const [subject, setSubject] = useState('');
-  const [checkinCount, setCheckinCount] = useState(0);
-  // Poll for checkin count
-  const pollCount = useCallback(async () => {
-    if (!session) return;
-    try {
-      const res = await getSession(session._id);
-      setCheckinCount(res.data.data.checkinCount);
-    } catch {
-      // silent
-    }
-  }, [session]);
+  const sheets = workbook?.sheets || [];
+  const hasSheets = sheets.length > 0;
 
-  useEffect(() => {
-    if (!session) return;
-    const interval = setInterval(pollCount, 10000);
-    pollCount(); // initial fetch
-    return () => clearInterval(interval);
-  }, [session, pollCount]);
-
-  const handleStart = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await createSession(branch, batch, subject);
-      setSession(res.data.data);
-    } catch (err) {
-      alert(err.response?.data?.message || 'Failed to start session.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClose = async () => {
-    if (!session) return;
-    if (!window.confirm('Close this session? Attendance will become read-only.')) return;
-    try {
-      await closeSession(session._id);
-      navigate(`/session/${session._id}/checkins`);
-    } catch (err) {
-      alert(err.response?.data?.message || 'Failed to close session.');
-    }
-  };
-
-  // Active session view
-  if (session) {
+  if (loading === 'loading') {
     return (
-      <div className="max-w-lg mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Attendance Session Active</h1>
-          <p className="text-gray-500">Session in progress</p>
-        </div>
-
-        <div className="card space-y-2">
-          <p><span className="text-gray-500">Branch:</span> {session.branch}</p>
-          <p><span className="text-gray-500">Batch:</span> {session.batch}</p>
-          {session.subject && <p><span className="text-gray-500">Subject:</span> {session.subject}</p>}
-        </div>
-
-        {/* Live count */}
-        <div className="card flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-green-50 rounded-xl">
-              <FiUsers className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Students Present</p>
-              <p className="text-3xl font-bold text-gray-900">{checkinCount}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            <span className="text-xs text-green-600 font-medium">Live</span>
-          </div>
-        </div>
-
-        {/* Actions - simplified, no QR/self-check-in */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => navigate(`/session/${session._id}/checkins`)}
-            className="btn-secondary flex-1 flex items-center justify-center gap-2"
-          >
-            <FiCheckCircle className="w-4 h-4" />
-            Manage Attendance
-          </button>
-          <button
-            onClick={handleClose}
-            className="btn-danger flex-1 flex items-center justify-center gap-2"
-          >
-            <FiStopCircle className="w-4 h-4" />
-            End Session
-          </button>
-        </div>
+      <div className="max-w-md mx-auto space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">Loading Workbook</h1>
+        <p className="text-gray-500">Please wait...</p>
       </div>
     );
   }
 
-  // Start new session form
+  if (loading === 'error') {
+    return (
+      <div className="max-w-md mx-auto space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">Load Error</h1>
+        <p role="alert" className="text-gray-500">{error}</p>
+        <button
+          onClick={() => setRetryCount((c) => c + 1)}
+          className="btn-primary mt-3"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!hasSheets && workbook) {
+    return (
+      <div className="max-w-md mx-auto space-y-6">
+        <h1 className="text-2xl font-bold text-gray-900">Start Attendance Session</h1>
+        <p className="text-gray-500">
+          No class sheets available. Add a sheet in Marks Management first.
+        </p>
+        <a href="/marks" className="btn-primary">Go to Marks Management</a>
+      </div>
+    );
+  }
+
+  const canStart =
+    loading === 'idle' &&
+    Boolean(workbook?._id) &&
+    Number.isInteger(selectedSheetIndex) &&
+    selectedSheetIndex >= 0 &&
+    Boolean(sheets[selectedSheetIndex]) &&
+    !creating;
+
+  const handleSelectSheet = (index) => {
+    setSelectedSheetIndex(index);
+    setError(null);
+  };
+
+  const handleCreateSession = async (e) => {
+    e.preventDefault();
+    if (!canStart) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const sheet = sheets[selectedSheetIndex];
+      if (!sheet) return;
+      const payload = {
+        workbookId: workbook._id,
+        sheetIndex: selectedSheetIndex,
+        branch: sheet.branch,
+        batch: sheet.batch,
+        subject: sheet.subject,
+      };
+      const res = await createSessionFromSheet(payload);
+      navigate(`/session/${res.data.data._id}/checkins`);
+    } catch (err) {
+      setError(
+        err.response?.data?.message || 'Failed to start session.'
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Start Attendance Session</h1>
-        <p className="text-gray-500">Create a session to record student attendance</p>
-      </div>
+      <h1 className="text-2xl font-bold text-gray-900">Start Attendance Session</h1>
+      <p className="text-gray-500">Create a session to record student attendance</p>
 
-      <div className="card">
-        <form onSubmit={handleStart} className="space-y-4">
-          <div>
-            <label className="label">Branch <span className="text-red-500">*</span></label>
-            <div className="flex gap-3">
-              {availableBranches.map((b) => (
-                <label
-                  key={b}
-                  className={`flex-1 flex items-center justify-center px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                    branch === b
-                      ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="branch"
-                    value={b}
-                    checked={branch === b}
-                    onChange={() => setBranch(b)}
-                    className="sr-only"
-                  />
-                  {b}
-                </label>
-              ))}
-            </div>
+      <form onSubmit={handleCreateSession} className="space-y-6">
+        <div>
+          <label className="label">Select Sheet</label>
+          <div className="flex flex-col space-y-2">
+            {sheets.map((sheet, index) => (
+              <label
+                key={index}
+                className={`flex flex-col items-center justify-center px-4 py-2.5 rounded-lg border cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 ${
+                  selectedSheetIndex === index
+                    ? 'bg-primary-50 border-primary-300 text-primary-700'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="sheet"
+                  value={index}
+                  checked={selectedSheetIndex === index}
+                  onChange={() => handleSelectSheet(index)}
+                  disabled={creating}
+                  className="sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                />
+                <span className="font-medium text-center">
+                  {sheet.name || `Sheet ${index}`}
+                </span>
+                {sheet.year && (
+                  <span className="text-xs text-gray-500 mt-1">
+                    {sheet.year}
+                  </span>
+                )}
+                {sheet.branch && (
+                  <span className="text-xs text-gray-500 mt-1">
+                    {sheet.branch}
+                  </span>
+                )}
+                {sheet.batch && (
+                  <span className="text-xs text-gray-500 mt-1">
+                    {sheet.batch}
+                  </span>
+                )}
+                {sheet.subject && (
+                  <span className="text-xs text-gray-500 mt-1">
+                    {sheet.subject}
+                  </span>
+                )}
+              </label>
+            ))}
           </div>
+        </div>
 
-          <div>
-            <label className="label">Batch <span className="text-red-500">*</span></label>
-            <div className="flex gap-2 flex-wrap">
-              {['September', 'December', 'March', 'June'].map((b) => (
-                <label
-                  key={b}
-                  className={`flex-1 min-w-[80px] flex items-center justify-center px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                    batch === b
-                      ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="batch"
-                    value={b}
-                    checked={batch === b}
-                    onChange={() => setBatch(b)}
-                    className="sr-only"
-                  />
-                  <span className="text-sm">{b}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Subject <span className="text-gray-400 font-normal">(optional)</span></label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="input-field"
-              placeholder="e.g., Mathematics, Physics"
-            />
-          </div>
-
+        <div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={!canStart}
             className="btn-primary w-full flex items-center justify-center gap-2"
           >
             <FiPlay className="w-4 h-4" />
-            {loading ? 'Starting...' : 'Start Session'}
+            {creating ? 'Creating...' : 'Start Session'}
           </button>
-        </form>
-      </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="text-sm text-gray-600 mt-2">
+            {error}
+          </div>
+        )}
+      </form>
     </div>
   );
 };

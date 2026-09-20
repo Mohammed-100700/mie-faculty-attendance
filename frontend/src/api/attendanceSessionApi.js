@@ -3,6 +3,21 @@ import api from './axios';
 export const createSession = (branch, batch, subject) =>
   api.post('/attendance-sessions', { branch, batch, subject });
 
+export const createSessionFromSheet = ({
+  workbookId,
+  sheetIndex,
+  branch,
+  batch,
+  subject,
+}) =>
+  api.post('/attendance-sessions', {
+    workbookId,
+    sheetIndex,
+    branch,
+    batch,
+    subject,
+  });
+
 export const getMySessions = () =>
   api.get('/attendance-sessions/my');
 
