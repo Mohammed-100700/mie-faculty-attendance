@@ -1,19 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  FiFilter, FiRefreshCw, FiUsers, FiBookOpen, FiClock,
-  FiCheckCircle, FiXCircle, FiChevronDown, FiChevronUp,
+  FiFilter, FiUsers, FiBookOpen, FiClock, FiChevronDown, FiChevronUp,
 } from 'react-icons/fi';
 import { getReports } from '../api/attendanceSessionApi';
 import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
 import ExportButtons from '../components/ExportButtons';
-import { exportLecturerPdf, exportManagerPdf } from '../utils/exportPdf';
-import { exportLecturerExcel, exportManagerExcel } from '../utils/exportExcel';
 
 const BATCHES = ['September', 'December', 'March', 'June'];
 
 const ExecutiveDashboard = () => {
   const { user } = useAuth();
+  const isAcademicManager = user?.role === 'Academic Manager';
+  const managedBranch = user?.managedBranch || '';
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [batch, setBatch] = useState('');
@@ -23,6 +22,8 @@ const ExecutiveDashboard = () => {
   const [expandedSession, setExpandedSession] = useState(null);
 
   useEffect(() => {
+    if (isAcademicManager) return;
+
     const fetchBranches = async () => {
       try {
         const res = await getBranches();
@@ -33,14 +34,15 @@ const ExecutiveDashboard = () => {
     };
 
     fetchBranches();
-  }, []);
+  }, [isAcademicManager]);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
       if (batch) params.batch = batch;
-      if (branch) params.branch = branch;
+      const reportBranch = isAcademicManager ? managedBranch : branch;
+      if (reportBranch) params.branch = reportBranch;
       if (subject) params.subject = subject;
       const res = await getReports(params.batch, params.branch, params.subject);
       setSessions(res.data.data);
@@ -50,7 +52,7 @@ const ExecutiveDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [batch, branch, subject]);
+  }, [batch, branch, isAcademicManager, managedBranch, subject]);
 
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
@@ -63,27 +65,27 @@ const ExecutiveDashboard = () => {
   const uniqueSubjects = [...new Set(sessions.map((s) => s.subject).filter(Boolean))];
 
   // Active branches plus any historical branches present in reports.
-  const branchOptions = [...new Set([
+  const branchOptions = isAcademicManager ? [] : [...new Set([
     ...availableBranches.map((item) => item.name),
     ...sessions.map((session) => session.branch).filter(Boolean),
     ...(branch ? [branch] : []),
   ])].sort();
 
-  const handleExportPdf = () => {
-    const filtered = sessions.map((s) => ({
-      ...s,
-      entries: [{ branch: s.branch, classes: 1, approvalStatus: 'Approved' }],
-    }));
-    exportManagerPdf(filtered, new Date().getMonth() + 1, new Date().getFullYear(), branch || 'All-Branches', `${batch || 'All-Batches'}_Executive_Report`);
-  };
-
-  const handleExportExcel = () => {
-    const filtered = sessions.map((s) => ({
-      ...s,
-      entries: [{ branch: s.branch, classes: 1, approvalStatus: 'Approved' }],
-    }));
-    exportManagerExcel(filtered, new Date().getMonth() + 1, new Date().getFullYear(), branch || 'All-Branches', `${batch || 'All-Batches'}_Executive_Report`);
-  };
+  const reportBranch = isAcademicManager ? managedBranch : branch;
+  const exportLogs = sessions.map((session) => ({
+    ...session,
+    date: session.sessionDate,
+    remarks: [
+      session.batch ? `Batch: ${session.batch}` : null,
+      session.subject ? `Subject: ${session.subject}` : null,
+      `Present: ${session.checkinCount || 0}`,
+    ].filter(Boolean).join(' | '),
+    entries: [{
+      branch: session.branch,
+      classes: 1,
+      approvalStatus: 'Approved',
+    }],
+  }));
 
   return (
     <div className="space-y-6">
@@ -106,13 +108,20 @@ const ExecutiveDashboard = () => {
               {BATCHES.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label">Branch</label>
-            <select value={branch} onChange={(e) => setBranch(e.target.value)} className="input-field text-sm">
-              <option value="">All Branches</option>
-              {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </div>
+          {isAcademicManager ? (
+            <div>
+              <label className="label">Branch</label>
+              <div className="input-field text-sm bg-gray-50 text-gray-600">{managedBranch || 'No branch assigned'}</div>
+            </div>
+          ) : (
+            <div>
+              <label className="label">Branch</label>
+              <select value={branch} onChange={(e) => setBranch(e.target.value)} className="input-field text-sm">
+                <option value="">All Branches</option>
+                {branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">Subject</label>
             <select value={subject} onChange={(e) => setSubject(e.target.value)} className="input-field text-sm">
@@ -162,11 +171,11 @@ const ExecutiveDashboard = () => {
       {sessions.length > 0 && (
         <div className="flex justify-end">
           <ExportButtons
-            logs={sessions}
+            logs={exportLogs}
             month={new Date().getMonth() + 1}
             year={new Date().getFullYear()}
             variant="manager"
-            managedBranch={branch || 'All'}
+            managedBranch={reportBranch || 'All'}
             userName={user?.name}
           />
         </div>

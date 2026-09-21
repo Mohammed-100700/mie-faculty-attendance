@@ -17,7 +17,7 @@ const { protect, authorizeRole } = require('../middleware/authMiddleware');
 router.get('/code/:code', getSessionByCode);
 
 // Reports (Executive Office) — specific path before /:id
-router.get('/reports', protect, authorizeRole('Executive Office'), getReports);
+router.get('/reports', protect, authorizeRole('Executive Office', 'Academic Manager'), getReports);
 
 // Protected routes (lecturer only) — specific paths FIRST
 router.post('/', protect, createSession);

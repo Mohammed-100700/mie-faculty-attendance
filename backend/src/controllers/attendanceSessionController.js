@@ -1176,8 +1176,28 @@ const getReports = async (req, res, next) => {
     const { batch, branch, subject } = req.query;
     const filter = {};
 
+    if (req.user.role === 'Academic Manager') {
+      const managedBranch = req.user.managedBranch;
+
+      if (!managedBranch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Academic Manager must have a managed branch assigned.',
+        });
+      }
+
+      if (branch && branch !== managedBranch) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not authorized to access reports for another branch.',
+        });
+      }
+
+      filter.branch = managedBranch;
+    }
+
     if (batch) filter.batch = batch;
-    if (branch) filter.branch = branch;
+    if (branch && req.user.role !== 'Academic Manager') filter.branch = branch;
     if (subject) filter.subject = { $regex: subject, $options: 'i' };
 
     const sessions = await AttendanceSession.find(filter)

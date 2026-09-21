@@ -59,7 +59,14 @@ function App() {
             <Route path="attendance-approval" element={<AttendanceApproval />} />
             <Route path="start-session" element={<StartSession />} />
             <Route path="session/:id/checkins" element={<SessionCheckins />} />
-            <Route path="executive-dashboard" element={<ExecutiveDashboard />} />
+            <Route
+              path="executive-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['Academic Manager', 'Executive Office']}>
+                  <ExecutiveDashboard />
+                </ProtectedRoute>
+              }
+            />
             <Route path="executive-marks" element={<ExecutiveMarks />} />
             <Route path="settings" element={<Settings />} />
           </Route>
