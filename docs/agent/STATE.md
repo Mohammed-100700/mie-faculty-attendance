@@ -1,8 +1,8 @@
 # Project State
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 Branch: `feature/student-attendance-v2`
-Latest completed work: C14 lecturer attendance session history (`cbe6ed6`)
+Latest completed work: C15 branch-scoped attendance reports (`0d98c14`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -17,6 +17,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Starting attendance uses a lecturer-owned workbook sheet and preserves its original `sheetIndex`, including index `0`.
 - Workbook NCUK ID updates synchronize to the canonical linked Student inside a transaction. Legacy rows without `studentRef` remain workbook-only.
 - The lecturer attendance-session page lists active and closed sessions independently from workbook loading. Resume and Review both use the existing session check-in route, which remains responsible for editability.
+- Executive Office attendance reports may span all branches. Academic Manager attendance reports are enforced server-side to `req.user.managedBranch`; cross-branch requests are rejected.
+- The attendance report page is restricted to Executive Office and Academic Manager roles. Academic Managers receive fixed branch context without an all-branches control.
 
 ## Completed checkpoints
 
@@ -26,6 +28,7 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C13: start attendance from workbook sheets — `0b27220`
 - NCUK canonical sync — `68dd166`
 - C14: lecturer attendance session history — `cbe6ed6`
+- C15: branch-scoped Executive Office and Academic Manager attendance reports — `0d98c14`
 
 ## Current task
 
