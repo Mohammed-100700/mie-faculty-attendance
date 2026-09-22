@@ -10,6 +10,7 @@ const {
   studentCheckin,
   getCheckins,
   getReports,
+  getStudentReports,
 } = require('../controllers/attendanceSessionController');
 const { protect, authorizeRole } = require('../middleware/authMiddleware');
 
@@ -18,6 +19,7 @@ router.get('/code/:code', getSessionByCode);
 
 // Reports (Executive Office) — specific path before /:id
 router.get('/reports', protect, authorizeRole('Executive Office', 'Academic Manager'), getReports);
+router.get('/reports/students', protect, authorizeRole('Executive Office', 'Academic Manager'), getStudentReports);
 
 // Protected routes (lecturer only) — specific paths FIRST
 router.post('/', protect, createSession);

@@ -148,6 +148,14 @@ const createSession = async (req, res, next) => {
     // --- Build rosterSnapshot from selected sheet, BEFORE session creation ---
     // This is computed once and reused; never re-queried from workbook later.
     const selectedSheet = workbook.sheets[resolvedSheetIndex];
+    const year = String(selectedSheet.year || '').trim();
+
+    if (!year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected sheet must have an academic year.',
+      });
+    }
 
     // Validate every roster row and build the immutable snapshot
     const rosterRows = selectedSheet.students;
@@ -209,6 +217,7 @@ const createSession = async (req, res, next) => {
       branch,
       batch: resolvedBatch,
       subject: resolvedSubject,
+      year,
       sessionDate: now,
       startTime: now,
       sessionCode,
@@ -1169,36 +1178,47 @@ const getCheckins = async (req, res, next) => {
   }
 };
 
-// @desc    Get attendance reports filtered by batch/branch/subject
+const getAuthorizedReportFilter = (req, res) => {
+  const { year, batch, branch, subject } = req.query;
+  const filter = {};
+
+  if (req.user.role === 'Academic Manager') {
+    const managedBranch = req.user.managedBranch;
+
+    if (!managedBranch) {
+      res.status(400).json({
+        success: false,
+        message: 'Academic Manager must have a managed branch assigned.',
+      });
+      return null;
+    }
+
+    if (branch && branch !== managedBranch) {
+      res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access reports for another branch.',
+      });
+      return null;
+    }
+
+    filter.branch = managedBranch;
+  } else if (branch) {
+    filter.branch = branch;
+  }
+
+  if (year) filter.year = year;
+  if (batch) filter.batch = batch;
+  if (subject) filter.subject = { $regex: subject, $options: 'i' };
+
+  return filter;
+};
+
+// @desc    Get attendance reports filtered by year/batch/branch/subject
 // @route   GET /api/attendance-sessions/reports
 const getReports = async (req, res, next) => {
   try {
-    const { batch, branch, subject } = req.query;
-    const filter = {};
-
-    if (req.user.role === 'Academic Manager') {
-      const managedBranch = req.user.managedBranch;
-
-      if (!managedBranch) {
-        return res.status(400).json({
-          success: false,
-          message: 'Academic Manager must have a managed branch assigned.',
-        });
-      }
-
-      if (branch && branch !== managedBranch) {
-        return res.status(403).json({
-          success: false,
-          message: 'You are not authorized to access reports for another branch.',
-        });
-      }
-
-      filter.branch = managedBranch;
-    }
-
-    if (batch) filter.batch = batch;
-    if (branch && req.user.role !== 'Academic Manager') filter.branch = branch;
-    if (subject) filter.subject = { $regex: subject, $options: 'i' };
+    const filter = getAuthorizedReportFilter(req, res);
+    if (!filter) return;
 
     const sessions = await AttendanceSession.find(filter)
       .populate('lecturerId', 'name email')
@@ -1213,6 +1233,7 @@ const getReports = async (req, res, next) => {
           .sort({ checkedInAt: 1 })
           .select('studentName studentId checkedInAt');
         const obj = session.toObject();
+        obj.year = obj.year || 'Unspecified';
         obj.checkinCount = checkinCount;
         obj.checkins = checkins;
         return obj;
@@ -1220,6 +1241,110 @@ const getReports = async (req, res, next) => {
     );
 
     res.json({ success: true, count: sessionsWithCounts.length, data: sessionsWithCounts });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get per-student attendance reports from immutable roster snapshots
+// @route   GET /api/attendance-sessions/reports/students
+const getStudentReports = async (req, res, next) => {
+  try {
+    const filter = getAuthorizedReportFilter(req, res);
+    if (!filter) return;
+
+    const sessions = await AttendanceSession.find(filter)
+      .populate('lecturerId', 'name email')
+      .sort({ sessionDate: -1 })
+      .lean();
+    const eligibleSessions = sessions.filter((session) => Array.isArray(session.rosterSnapshot));
+    const excludedLegacySessionCount = sessions.length - eligibleSessions.length;
+    const sessionIds = eligibleSessions.map((session) => session._id);
+    const checkins = sessionIds.length
+      ? await StudentCheckin.find({ sessionId: { $in: sessionIds } }).select('sessionId studentRef').lean()
+      : [];
+
+    const presentBySessionAndStudent = new Set(
+      checkins
+        .filter((checkin) => checkin.studentRef)
+        .map((checkin) => `${String(checkin.sessionId)}:${canonicalRef(String(checkin.studentRef))}`)
+    );
+    const reportStudents = new Map();
+
+    for (const session of eligibleSessions) {
+      for (const snapshotStudent of session.rosterSnapshot) {
+        if (!snapshotStudent.studentRef) continue;
+
+        const studentRef = canonicalRef(String(snapshotStudent.studentRef));
+        const present = presentBySessionAndStudent.has(`${String(session._id)}:${studentRef}`);
+        let row = reportStudents.get(studentRef);
+
+        if (!row) {
+          row = {
+            studentRef,
+            mieStudentId: snapshotStudent.mieStudentId,
+            ncukId: null,
+            studentName: snapshotStudent.studentName,
+            eligibleSessions: 0,
+            presentCount: 0,
+            absentCount: 0,
+            attendancePercentage: 0,
+            history: [],
+          };
+          reportStudents.set(studentRef, row);
+        }
+
+        row.eligibleSessions++;
+        if (present) row.presentCount++;
+        else row.absentCount++;
+        row.history.push({
+          sessionId: String(session._id),
+          sessionDate: session.sessionDate,
+          year: session.year || 'Unspecified',
+          batch: session.batch,
+          branch: session.branch,
+          subject: session.subject,
+          lecturerId: session.lecturerId && session.lecturerId._id
+            ? String(session.lecturerId._id)
+            : String(session.lecturerId),
+          lecturer: session.lecturerId && session.lecturerId._id
+            ? { name: session.lecturerId.name, email: session.lecturerId.email }
+            : null,
+          status: present ? 'present' : 'absent',
+        });
+      }
+    }
+
+    const studentRefs = Array.from(reportStudents.keys()).map((studentRef) => new mongoose.Types.ObjectId(studentRef));
+    const canonicalStudents = studentRefs.length
+      ? await Student.find({ _id: { $in: studentRefs } }).select('mieStudentId ncukId name').lean()
+      : [];
+
+    for (const student of canonicalStudents) {
+      const row = reportStudents.get(canonicalRef(String(student._id)));
+      if (!row) continue;
+      row.mieStudentId = student.mieStudentId || row.mieStudentId;
+      row.ncukId = student.ncukId || null;
+      row.studentName = student.name || row.studentName;
+    }
+
+    const data = Array.from(reportStudents.values());
+    for (const row of data) {
+      row.attendancePercentage = row.eligibleSessions
+        ? (row.presentCount / row.eligibleSessions) * 100
+        : 0;
+      row.history.sort((a, b) => new Date(b.sessionDate) - new Date(a.sessionDate));
+    }
+    data.sort((a, b) =>
+      a.studentName.localeCompare(b.studentName) || a.mieStudentId.localeCompare(b.mieStudentId)
+    );
+
+    res.json({
+      success: true,
+      count: data.length,
+      excludedLegacySessionCount,
+      data,
+    });
   } catch (error) {
     next(error);
   }
@@ -1235,4 +1360,5 @@ module.exports = {
   studentCheckin,
   getCheckins,
   getReports,
+  getStudentReports,
 };

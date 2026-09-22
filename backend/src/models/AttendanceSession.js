@@ -46,6 +46,11 @@ const attendanceSessionSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    year: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     sessionDate: {
       type: Date,
       required: true,
