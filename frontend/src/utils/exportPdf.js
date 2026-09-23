@@ -1,6 +1,8 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTableModule from 'jspdf-autotable';
 import { formatDate, getMonthName } from './formatCurrency';
+
+const autoTable = autoTableModule?.default || autoTableModule;
 
 const statusColors = {
   Pending: [251, 191, 36],   // amber
@@ -8,16 +10,30 @@ const statusColors = {
   Rejected: [239, 68, 68],   // red
 };
 
+const normalizeBranchFilter = (value) => {
+  const branch = String(value || '').trim();
+  return branch && branch.toLowerCase() !== 'all' ? branch : '';
+};
+
+const sanitizeFilename = (value, fallback = 'report') => {
+  const safe = String(value || '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return safe || fallback;
+};
+
 function buildRows(logs, managedBranch) {
+  const branchFilter = normalizeBranchFilter(managedBranch);
   const rows = [];
   logs.forEach((log) => {
     const d = new Date(log.date);
     log.entries?.forEach((entry) => {
-      if (managedBranch && entry.branch !== managedBranch) return;
+      if (branchFilter && entry.branch !== branchFilter) return;
       rows.push([
         formatDate(log.date),
         entry.branch,
-        entry.classes.toString(),
+        String(entry.classes ?? 0),
         entry.approvalStatus,
         log.remarks || (entry.rejectionReason ? entry.rejectionReason : '—'),
       ]);
@@ -27,15 +43,16 @@ function buildRows(logs, managedBranch) {
 }
 
 function buildManagerRows(logs, managedBranch) {
+  const branchFilter = normalizeBranchFilter(managedBranch);
   const rows = [];
   logs.forEach((log) => {
     log.entries?.forEach((entry) => {
-      if (managedBranch && entry.branch !== managedBranch) return;
+      if (branchFilter && entry.branch !== branchFilter) return;
       rows.push([
         formatDate(log.date),
         log.lecturerId?.name || '—',
         entry.branch,
-        entry.classes.toString(),
+        String(entry.classes ?? 0),
         entry.approvalStatus,
         log.remarks || (entry.rejectionReason ? entry.rejectionReason : '—'),
       ]);
@@ -45,13 +62,14 @@ function buildManagerRows(logs, managedBranch) {
 }
 
 function countStats(logs, managedBranch) {
+  const branchFilter = normalizeBranchFilter(managedBranch);
   let totalClasses = 0;
   let approved = 0;
   let rejected = 0;
   let pending = 0;
   logs.forEach((log) => {
     log.entries?.forEach((entry) => {
-      if (managedBranch && entry.branch !== managedBranch) return;
+      if (branchFilter && entry.branch !== branchFilter) return;
       totalClasses += entry.classes;
       if (entry.approvalStatus === 'Approved') approved++;
       else if (entry.approvalStatus === 'Rejected') rejected++;
@@ -133,8 +151,10 @@ export function exportLecturerPdf(logs, month, year, userName) {
 export function exportManagerPdf(logs, month, year, managedBranch, lecturerName) {
   const doc = new jsPDF();
   const isLecturerSpecific = !!lecturerName;
-  const rows = isLecturerSpecific ? buildRows(logs, managedBranch) : buildManagerRows(logs, managedBranch);
-  const stats = countStats(logs, managedBranch);
+  const branchFilter = normalizeBranchFilter(managedBranch);
+  const branchLabel = branchFilter || 'All Branches';
+  const rows = isLecturerSpecific ? buildRows(logs, branchFilter) : buildManagerRows(logs, branchFilter);
+  const stats = countStats(logs, branchFilter);
 
   // Header
   doc.setFontSize(18);
@@ -145,9 +165,9 @@ export function exportManagerPdf(logs, month, year, managedBranch, lecturerName)
   doc.setTextColor(0);
   if (isLecturerSpecific) {
     doc.text(`Lecturer: ${lecturerName}`, 14, 30);
-    doc.text(`Branch: ${managedBranch}`, 14, 37);
+    doc.text(`Branch: ${branchLabel}`, 14, 37);
   } else {
-    doc.text(`Academic Manager — ${managedBranch} Branch`, 14, 30);
+    doc.text(`Branch scope: ${branchLabel}`, 14, 30);
   }
   doc.text(`Period: ${getMonthName(parseInt(month))} ${year}`, 14, 44);
   doc.text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, 14, 51);
@@ -212,9 +232,10 @@ export function exportManagerPdf(logs, month, year, managedBranch, lecturerName)
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(128);
-    doc.text(`MIE Faculty Attendance System • ${managedBranch} Branch  |  Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
+    doc.text(`MIE Faculty Attendance System | ${branchLabel} | Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
   }
 
-  const filePrefix = isLecturerSpecific ? `attendance-report-${lecturerName.replace(/\s+/g, '-')}` : `attendance-report-${managedBranch}`;
+  const fileScope = isLecturerSpecific ? lecturerName : branchLabel;
+  const filePrefix = `attendance-report-${sanitizeFilename(fileScope)}`;
   doc.save(`${filePrefix}-${month}-${year}.pdf`);
 }

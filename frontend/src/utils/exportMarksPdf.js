@@ -1,5 +1,7 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTableModule from 'jspdf-autotable';
+
+const autoTable = autoTableModule?.default || autoTableModule;
 
 function sanitizeFilename(value) {
   return String(value).replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -14,6 +16,24 @@ function formatAssessmentDate(dateValue) {
   const utcYear = d.getUTCFullYear();
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${utcDay} ${monthNames[utcMonth]} ${utcYear}`;
+}
+
+function addPageFooters(doc, label, pageMargin) {
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const footerY = pageHeight - 10;
+    doc.setDrawColor(210, 218, 230);
+    doc.setLineWidth(0.3);
+    doc.line(pageMargin, footerY - 4, pageWidth - pageMargin, footerY - 4);
+    doc.setFontSize(7);
+    doc.setTextColor(128);
+    doc.setFont('helvetica', 'normal');
+    doc.text(label, pageMargin, footerY);
+    doc.text(`Page ${page} of ${pageCount}`, pageWidth - pageMargin, footerY, { align: 'right' });
+  }
 }
 
 // Helper: render individual report header + student info.
@@ -199,6 +219,7 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
     head: [['Assessment', 'Date', 'Marks Obtained', 'Maximum Marks', 'Percentage']],
     body: tableRows,
     theme: 'striped',
+    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 20 },
     headStyles: {
       fillColor: [37, 99, 235],
       textColor: [255, 255, 255],
@@ -231,7 +252,12 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
     ? doc.lastAutoTable.finalY
     : 100;
 
-  const perfY = tableFinalY + 14;
+  let perfY = tableFinalY + 14;
+  const footerY = doc.internal.pageSize.height - 14;
+  if (perfY + 18 > footerY - 8) {
+    doc.addPage();
+    perfY = 24;
+  }
   const perfBoxW = usableWidth / 2 - 5;
 
   // Left column: TOTAL MARKS
@@ -262,36 +288,10 @@ function renderIndividualHeader(doc, PAGE_MARGIN, PAGE_WIDTH, student, subject, 
   doc.setFontSize(14);
   doc.setTextColor(30, 30, 30);
   doc.setFont('helvetica', 'bold');
-  doc.text(`${overallPercentage}%`, rightBoxX + perfBoxW / 2, perfY + 12, { align: 'center' });
+  const overallPercentageText = overallPercentage === '—' ? '—' : `${overallPercentage}%`;
+  doc.text(overallPercentageText, rightBoxX + perfBoxW / 2, perfY + 12, { align: 'center' });
 
-  // ---- FOOTER ----
-  const footerY = doc.internal.pageSize.height - 14;
-
-  doc.setDrawColor(210, 218, 230);
-  doc.setLineWidth(0.3);
-  doc.line(PAGE_MARGIN, footerY - 4, PAGE_WIDTH - PAGE_MARGIN, footerY - 4);
-
-  doc.setFontSize(7);
-  doc.setTextColor(128);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    'MIE Pathways | Academic Progress Report',
-    PAGE_MARGIN,
-    footerY
-  );
-  doc.text(
-    `Page ${doc.internal.getNumberOfPages()} of ${doc.internal.getNumberOfPages()}`,
-    PAGE_WIDTH - PAGE_MARGIN,
-    footerY,
-    { align: 'right' }
-  );
-  doc.setFontSize(6);
-  doc.setTextColor(150);
-  doc.text(
-    'This report is generated from marks recorded by the faculty.',
-    PAGE_MARGIN,
-    footerY + 4
-  );
+  addPageFooters(doc, 'MIE Pathways | Academic Progress Report', PAGE_MARGIN);
 
   // Filename
   const safeName = sanitizeFilename(studentName);
@@ -453,7 +453,7 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
   const summaryBlocks = [
     { label: 'STUDENTS', value: String(students.length) },
     { label: 'ASSESSMENTS', value: String(tests.length) },
-    { label: 'CLASS AVERAGE', value: `${classAverage}%` },
+    { label: 'CLASS AVERAGE', value: classAverage === '—' ? '—' : `${classAverage}%` },
   ];
 
   summaryBlocks.forEach((block, i) => {
@@ -488,6 +488,7 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
     head: [detailsHeaders],
     body: detailsRows,
     theme: 'striped',
+    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 20 },
     headStyles: {
       fillColor: [37, 99, 235],
       textColor: [255, 255, 255],
@@ -572,6 +573,10 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
     head: [headers],
     body: rows,
     theme: 'striped',
+    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 20 },
+    horizontalPageBreak: true,
+    horizontalPageBreakRepeat: [0, 1],
+    horizontalPageBreakBehaviour: 'immediately',
     headStyles: {
       fillColor: [37, 99, 235],
       textColor: [255, 255, 255],
@@ -601,29 +606,11 @@ function renderClassHeader(doc, PAGE_MARGIN, PAGE_WIDTH, sheet, students, tests,
     },
   });
 
-  const tableFinalY = Number.isFinite(autoTable.endY) ? autoTable.endY : 100;
+  const tableFinalY = Number.isFinite(doc.lastAutoTable?.finalY)
+    ? doc.lastAutoTable.finalY
+    : tableStartY + 20;
 
-  // ---- FOOTER ----
-  const footerY = doc.internal.pageSize.height - 10;
-
-  doc.setDrawColor(210, 218, 230);
-  doc.setLineWidth(0.3);
-  doc.line(PAGE_MARGIN, footerY - 4, PAGE_WIDTH - PAGE_MARGIN, footerY - 4);
-
-  doc.setFontSize(7);
-  doc.setTextColor(128);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    'MIE Pathways | Class Marks Report',
-    PAGE_MARGIN,
-    footerY
-  );
-  doc.text(
-    `Page ${doc.internal.getNumberOfPages()} of ${doc.internal.getNumberOfPages()}`,
-    PAGE_WIDTH - PAGE_MARGIN,
-    footerY,
-    { align: 'right' }
-  );
+  addPageFooters(doc, 'MIE Pathways | Class Marks Report', PAGE_MARGIN);
 
   // Filename
   const safeBranch = sanitizeFilename(branchVal);

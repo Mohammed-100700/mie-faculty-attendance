@@ -39,6 +39,16 @@ export const studentCheckin = (id, payload) =>
 export const saveAttendance = (id, presentStudentRefs) =>
   api.put(`/attendance-sessions/${id}/attendance`, { presentStudentRefs });
 
-// Reports (Executive Office)
-export const getReports = (batch, branch, subject) =>
-  api.get('/attendance-sessions/reports', { params: { batch, branch, subject } });
+export const getReports = (filter = {}) => {
+  const { year, batch, branch, subject } = filter;
+  return api.get('/attendance-sessions/reports', {
+    params: { year, batch, branch, subject },
+  });
+};
+
+export const getStudentReports = (filter = {}) => {
+  const { year, batch, branch, subject } = filter;
+  return api.get('/attendance-sessions/reports/students', {
+    params: { year, batch, branch, subject },
+  });
+};
