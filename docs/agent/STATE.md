@@ -2,7 +2,7 @@
 
 Updated: 2026-09-22
 Branch: `feature/student-attendance-v2`
-Latest completed work: C15 branch-scoped attendance reports (`0d98c14`)
+Latest completed work: C17 student attendance report experience (`46583f6`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -15,10 +15,13 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Public student self-check-in remains blocked for snapshot-backed sessions and preserved for legacy sessions.
 - Manual attendance saves the complete set of present student refs. An empty set is valid.
 - Starting attendance uses a lecturer-owned workbook sheet and preserves its original `sheetIndex`, including index `0`.
+- New attendance sessions snapshot the selected sheet's normalized academic year. Existing sessions without a year remain readable as `Unspecified`.
 - Workbook NCUK ID updates synchronize to the canonical linked Student inside a transaction. Legacy rows without `studentRef` remain workbook-only.
 - The lecturer attendance-session page lists active and closed sessions independently from workbook loading. Resume and Review both use the existing session check-in route, which remains responsible for editability.
 - Executive Office attendance reports may span all branches. Academic Manager attendance reports are enforced server-side to `req.user.managedBranch`; cross-branch requests are rejected.
 - The attendance report page is restricted to Executive Office and Academic Manager roles. Academic Managers receive fixed branch context without an all-branches control.
+- Per-student attendance aggregates use snapshot eligibility and canonical `studentRef` identity. A matching check-in is Present; an eligible roster member without one is Absent.
+- Legacy sessions without roster snapshots are excluded from per-student denominators and disclosed through `excludedLegacySessionCount`.
 
 ## Completed checkpoints
 
@@ -29,7 +32,9 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - NCUK canonical sync — `68dd166`
 - C14: lecturer attendance session history — `cbe6ed6`
 - C15: branch-scoped Executive Office and Academic Manager attendance reports — `0d98c14`
+- C16: academic-year student attendance reports — `5832d0c`
+- C17: student attendance report experience and verified report exports — `46583f6`
 
 ## Current task
 
-No product checkpoint is active. `docs/agent/NEXT.md` is `EMPTY`. Plan the next checkpoint before modifying application code.
+C17.5 is active in `docs/agent/NEXT.md`: unify the lecturer attendance-session and roster UI with the established Marks Management visual language while preserving attendance behavior.
