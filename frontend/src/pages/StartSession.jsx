@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlay } from 'react-icons/fi';
+import { FiPlay, FiClock, FiCheckCircle, FiUsers } from 'react-icons/fi';
 import { createSessionFromSheet, getMySessions } from '../api/attendanceSessionApi';
 import { getWorkbook } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
@@ -110,27 +110,52 @@ const StartSession = () => {
     }
   };
 
-  const renderSessionCard = (session, isActive) => {
-    const sessionDate = session.sessionDate ? new Date(session.sessionDate) : null;
-    const date = sessionDate && !Number.isNaN(sessionDate.getTime())
-      ? sessionDate.toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        })
-      : 'Date unavailable';
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date unavailable';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
 
+  const renderSessionCard = (session, isActive) => {
+    const presentCount = session.checkinCount ?? 0;
     return (
-      <article key={session._id} className="rounded-lg border border-gray-200 bg-white p-4">
+      <article
+        key={session._id}
+        className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors"
+      >
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h4 className="break-words font-medium text-gray-900">
-              {session.subject?.trim() || 'No subject'}
-            </h4>
-            <p className="mt-1 text-xs text-gray-500">{date}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              {session.year && (
+                <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.year}
+                </span>
+              )}
+              {session.batch && (
+                <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.batch}
+                </span>
+              )}
+              {session.branch && (
+                <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.branch}
+                </span>
+              )}
+              {session.subject && (
+                <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.subject}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">{formatDate(session.sessionDate)}</p>
           </div>
           <span
-            className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
               isActive
                 ? 'bg-green-100 text-green-800'
                 : 'bg-gray-100 text-gray-700'
@@ -139,38 +164,32 @@ const StartSession = () => {
             {isActive ? 'Active' : 'Closed'}
           </span>
         </div>
-        <dl className="mt-3 space-y-1 text-sm text-gray-600">
-          <div className="flex justify-between gap-3">
-            <dt>Branch</dt>
-            <dd className="text-right font-medium text-gray-800">{session.branch || '—'}</dd>
+        <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center gap-1">
+            <FiUsers className="w-4 h-4" />
+            <span className="font-medium text-gray-800">{presentCount}</span>
+            <span className="text-gray-400">present</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <dt>Batch</dt>
-            <dd className="text-right font-medium text-gray-800">{session.batch || '—'}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt>Present</dt>
-            <dd className="text-right font-medium text-gray-800">{session.checkinCount ?? 0}</dd>
-          </div>
-        </dl>
-        <button
-          type="button"
-          onClick={() => navigate(`/session/${session._id}/checkins`)}
-          className="btn-secondary mt-4 w-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-        >
-          {isActive ? 'Resume' : 'Review'}
-        </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/session/${session._id}/checkins`)}
+            className="btn-secondary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            {isActive ? 'Resume' : 'Review'}
+          </button>
+        </div>
       </article>
     );
   };
 
-  const renderSessionGroup = (title, groupSessions, isActive) => (
+  const renderSessionGroup = (title, groupSessions, isActive, icon) => (
     <section aria-labelledby={`${isActive ? 'active' : 'closed'}-sessions-heading`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3
           id={`${isActive ? 'active' : 'closed'}-sessions-heading`}
-          className="font-semibold text-gray-900"
+          className="flex items-center gap-2 font-semibold text-gray-900"
         >
+          <span className="text-lg">{icon}</span>
           {title}
         </h3>
         <span className="text-sm text-gray-500">{groupSessions.length}</span>
@@ -180,21 +199,27 @@ const StartSession = () => {
           {isActive ? 'No active sessions.' : 'No closed sessions.'}
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {groupSessions.map((session) => renderSessionCard(session, isActive))}
         </div>
       )}
     </section>
   );
 
+  const sheetsByBatch = {};
+  sheets.forEach((s, i) => {
+    if (!sheetsByBatch[s.batch]) sheetsByBatch[s.batch] = [];
+    sheetsByBatch[s.batch].push({ ...s, index: i });
+  });
+
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Attendance Sessions</h1>
         <p className="text-gray-500">Start a new session or return to an existing one</p>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <section className="card space-y-5 lg:col-span-1" aria-labelledby="start-session-heading">
           <h2 id="start-session-heading" className="text-lg font-semibold text-gray-900">
             Start New Session
@@ -229,32 +254,49 @@ const StartSession = () => {
             <form onSubmit={handleCreateSession} className="space-y-5">
               <fieldset disabled={creating}>
                 <legend className="label">Select Sheet</legend>
-                <div className="flex flex-col space-y-2">
-                  {sheets.map((sheet, index) => (
-                    <label
-                      key={index}
-                      className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border px-4 py-2.5 transition-colors focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 ${
-                        selectedSheetIndex === index
-                          ? 'border-primary-300 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="sheet"
-                        value={index}
-                        checked={selectedSheetIndex === index}
-                        onChange={() => handleSelectSheet(index)}
-                        className="sr-only focus-visible:outline-none"
-                      />
-                      <span className="text-center font-medium">
-                        {sheet.name || `Sheet ${index}`}
-                      </span>
-                      {sheet.year && <span className="mt-1 text-xs text-gray-500">{sheet.year}</span>}
-                      {sheet.branch && <span className="mt-1 text-xs text-gray-500">{sheet.branch}</span>}
-                      {sheet.batch && <span className="mt-1 text-xs text-gray-500">{sheet.batch}</span>}
-                      {sheet.subject && <span className="mt-1 text-xs text-gray-500">{sheet.subject}</span>}
-                    </label>
+                <div className="space-y-3">
+                  {Object.keys(sheetsByBatch).map((batch) => (
+                    <div key={batch} className="space-y-2">
+                      <span className="text-xs font-semibold text-gray-500 block mb-1">{batch}</span>
+                      {sheetsByBatch[batch].map((sheet) => (
+                        <label
+                          key={sheet.index}
+                          className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 ${
+                            selectedSheetIndex === sheet.index
+                              ? 'border-primary-300 bg-primary-50 text-primary-700'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="sheet"
+                            value={sheet.index}
+                            checked={selectedSheetIndex === sheet.index}
+                            onChange={() => handleSelectSheet(sheet.index)}
+                            className="sr-only focus-visible:outline-none"
+                          />
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {sheet.year && (
+                                <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">
+                                  {sheet.year}
+                                </span>
+                              )}
+                              {sheet.branch && (
+                                <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">
+                                  {sheet.branch}
+                                </span>
+                              )}
+                              <span className="text-sm font-medium text-gray-900 truncate">{sheet.subject}</span>
+                              <span className="text-xs text-gray-400">({sheet.students?.length ?? 0})</span>
+                            </div>
+                          </div>
+                          {selectedSheetIndex === sheet.index && (
+                            <FiCheckCircle className="w-5 h-5 text-primary-600 shrink-0 ml-3" />
+                          )}
+                        </label>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </fieldset>
@@ -265,7 +307,7 @@ const StartSession = () => {
                 className="btn-primary flex w-full items-center justify-center gap-2"
               >
                 <FiPlay className="h-4 w-4" />
-                {creating ? 'Creating...' : 'Start Session'}
+                {creating ? 'Creating...' : 'Start Attendance'}
               </button>
 
               {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -297,8 +339,8 @@ const StartSession = () => {
             </p>
           ) : (
             <div className="space-y-8">
-              {renderSessionGroup('Active Sessions', activeSessions, true)}
-              {renderSessionGroup('Closed Sessions', closedSessions, false)}
+              {renderSessionGroup('Active Sessions', activeSessions, true, <FiClock className="w-5 h-5 text-green-600" />)}
+              {renderSessionGroup('Closed Sessions', closedSessions, false, <FiCheckCircle className="w-5 h-5 text-gray-500" />)}
             </div>
           )}
         </section>
