@@ -1,23 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FiBookOpen,
-  FiCheckCircle,
   FiChevronDown,
   FiChevronUp,
   FiClock,
   FiDownload,
   FiFilter,
   FiInfo,
-  FiPercent,
   FiSearch,
   FiUsers,
-  FiXCircle,
 } from 'react-icons/fi';
 import { getReports, getStudentReports } from '../api/attendanceSessionApi';
 import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
 import ExportButtons from '../components/ExportButtons';
-import { exportStudentAttendancePdf } from '../utils/exportAttendancePdf';
+import { exportClassAttendancePdf, exportStudentAttendancePdf } from '../utils/exportAttendancePdf';
 
 const BATCHES = ['September', 'December', 'March', 'June'];
 const EMPTY_FILTERS = { year: '', batch: '', branch: '', subject: '' };
@@ -47,8 +44,166 @@ const lecturerName = (lecturer) => {
   return lecturer?.name || '—';
 };
 
+const initialsFromName = (name) =>
+  String(name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '?';
+
 const mergeOptions = (current, incoming) =>
   [...new Set([...current, ...incoming].filter(Boolean).map(String))];
+
+const normalizeYear = (year) => {
+  const value = String(year || '').trim();
+  return value || 'Unspecified';
+};
+
+const makeClassKey = ({ year, batch, branch, subject }) =>
+  [normalizeYear(year), String(batch || ''), String(branch || ''), String(subject || '')].join('|');
+
+const resolveLecturerId = (entry) => {
+  const raw = entry?.lecturerId;
+  if (raw === undefined || raw === null) return '';
+  const value = String(raw).trim();
+  if (!value || value === 'null' || value === 'undefined') return '';
+  return value;
+};
+
+const buildLecturerGroups = (students) => {
+  const lecturers = new Map();
+
+  students.forEach((student) => {
+    (student.history || []).forEach((entry) => {
+      const lecturerId = resolveLecturerId(entry);
+      if (!lecturerId) return;
+
+      const name = lecturerName(entry.lecturer) || 'Unknown lecturer';
+      let lecturer = lecturers.get(lecturerId);
+      if (!lecturer) {
+        lecturer = {
+          lecturerId,
+          name,
+          classes: new Map(),
+          studentRefs: new Set(),
+        };
+        lecturers.set(lecturerId, lecturer);
+      } else if ((!lecturer.name || lecturer.name === 'Unknown lecturer') && name !== 'Unknown lecturer') {
+        lecturer.name = name;
+      }
+
+      const year = normalizeYear(entry.year);
+      const batch = String(entry.batch || '');
+      const branch = String(entry.branch || '');
+      const subject = String(entry.subject || '');
+      const classKey = makeClassKey({ year, batch, branch, subject });
+
+      let attendanceClass = lecturer.classes.get(classKey);
+      if (!attendanceClass) {
+        attendanceClass = {
+          classKey,
+          year,
+          batch,
+          branch,
+          subject,
+          sessionIds: new Set(),
+          studentRefs: new Set(),
+        };
+        lecturer.classes.set(classKey, attendanceClass);
+      }
+
+      attendanceClass.sessionIds.add(String(entry.sessionId));
+      attendanceClass.studentRefs.add(student.studentRef);
+      lecturer.studentRefs.add(student.studentRef);
+    });
+  });
+
+  const batchRank = (batch) => {
+    const index = BATCHES.indexOf(batch);
+    return index === -1 ? BATCHES.length : index;
+  };
+
+  return Array.from(lecturers.values())
+    .map((lecturer) => {
+      const classes = Array.from(lecturer.classes.values())
+        .map((attendanceClass) => ({
+          ...attendanceClass,
+          sessionCount: attendanceClass.sessionIds.size,
+          studentCount: attendanceClass.studentRefs.size,
+        }))
+        .sort((a, b) =>
+          batchRank(a.batch) - batchRank(b.batch)
+          || a.batch.localeCompare(b.batch)
+          || String(a.year).localeCompare(String(b.year), undefined, { numeric: true })
+          || a.branch.localeCompare(b.branch)
+          || a.subject.localeCompare(b.subject)
+        );
+
+      const classesByBatch = {};
+      classes.forEach((attendanceClass, index) => {
+        const batch = attendanceClass.batch || '—';
+        if (!classesByBatch[batch]) classesByBatch[batch] = [];
+        classesByBatch[batch].push({ ...attendanceClass, index });
+      });
+
+      return {
+        lecturerId: lecturer.lecturerId,
+        name: lecturer.name,
+        classCount: classes.length,
+        studentCount: lecturer.studentRefs.size,
+        classes,
+        classesByBatch,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name) || a.lecturerId.localeCompare(b.lecturerId));
+};
+
+const aggregateStudentsForClass = (students, lecturerId, attendanceClass) => {
+  if (!attendanceClass) return [];
+
+  const classKey = attendanceClass.classKey;
+  const rows = [];
+
+  students.forEach((student) => {
+    const history = (student.history || []).filter((entry) =>
+      resolveLecturerId(entry) === lecturerId
+      && makeClassKey({
+        year: entry.year,
+        batch: entry.batch,
+        branch: entry.branch,
+        subject: entry.subject,
+      }) === classKey
+    );
+
+    if (history.length === 0) return;
+
+    const eligibleSessions = history.length;
+    const presentCount = history.filter((entry) => entry.status === 'present').length;
+    const absentCount = eligibleSessions - presentCount;
+    const attendancePercentage = eligibleSessions > 0
+      ? (presentCount / eligibleSessions) * 100
+      : 0;
+
+    rows.push({
+      studentRef: student.studentRef,
+      studentName: student.studentName,
+      mieStudentId: student.mieStudentId,
+      ncukId: student.ncukId,
+      eligibleSessions,
+      presentCount,
+      absentCount,
+      attendancePercentage,
+      history,
+    });
+  });
+
+  return rows.sort((a, b) =>
+    String(a.studentName || '').localeCompare(String(b.studentName || ''))
+    || String(a.studentRef).localeCompare(String(b.studentRef))
+  );
+};
 
 const ExecutiveDashboard = () => {
   const { user } = useAuth();
@@ -73,7 +228,10 @@ const ExecutiveDashboard = () => {
   const [availableYears, setAvailableYears] = useState([]);
   const [availableSubjects, setAvailableSubjects] = useState([]);
 
-  const [studentSearch, setStudentSearch] = useState('');
+  const [lecturerSearch, setLecturerSearch] = useState('');
+  const [expandedLecturer, setExpandedLecturer] = useState(null);
+  const [activeClassByLecturer, setActiveClassByLecturer] = useState({});
+  const [studentSearchByLecturer, setStudentSearchByLecturer] = useState({});
   const [expandedStudent, setExpandedStudent] = useState(null);
   const [expandedSession, setExpandedSession] = useState(null);
   const sessionRequestId = useRef(0);
@@ -174,6 +332,7 @@ const ExecutiveDashboard = () => {
     if (reportsBusy) return;
     const nextFilter = buildFilter({ year, batch, branch, subject });
     setAppliedFilters(nextFilter);
+    setExpandedStudent(null);
     await Promise.allSettled([loadSessions(nextFilter), loadStudents(nextFilter)]);
   };
 
@@ -183,7 +342,10 @@ const ExecutiveDashboard = () => {
     setBatch('');
     setBranch('');
     setSubject('');
-    setStudentSearch('');
+    setLecturerSearch('');
+    setStudentSearchByLecturer({});
+    setActiveClassByLecturer({});
+    setExpandedStudent(null);
     const nextFilter = buildFilter(EMPTY_FILTERS);
     setAppliedFilters(nextFilter);
     await Promise.allSettled([loadSessions(nextFilter), loadStudents(nextFilter)]);
@@ -207,24 +369,33 @@ const ExecutiveDashboard = () => {
     ).sort((a, b) => a.localeCompare(b));
   }, [availableBranches, branch, isAcademicManager, sessions]);
 
-  const filteredStudents = useMemo(() => {
-    const query = studentSearch.trim().toLowerCase();
-    if (!query) return students;
-    return students.filter((student) =>
-      [student.studentName, student.mieStudentId, student.ncukId]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query))
-    );
-  }, [studentSearch, students]);
+  const lecturerGroups = useMemo(() => buildLecturerGroups(students), [students]);
 
-  const studentTotals = useMemo(() => {
-    const present = students.reduce((sum, student) => sum + (Number(student.presentCount) || 0), 0);
-    const absent = students.reduce((sum, student) => sum + (Number(student.absentCount) || 0), 0);
-    const average = students.length
-      ? students.reduce((sum, student) => sum + (Number(student.attendancePercentage) || 0), 0) / students.length
-      : 0;
-    return { present, absent, average };
-  }, [students]);
+  const lecturerQuery = lecturerSearch.trim();
+
+  const filteredLecturers = useMemo(() => {
+    const query = lecturerQuery.toLowerCase();
+    if (!query) return lecturerGroups;
+    return lecturerGroups.filter((lecturer) =>
+      lecturer.name.toLowerCase().includes(query)
+    );
+  }, [lecturerGroups, lecturerQuery]);
+
+  const visibleLecturerKey = useMemo(
+    () => filteredLecturers.map((lecturer) => lecturer.lecturerId).join('|'),
+    [filteredLecturers]
+  );
+  const visibleLecturerKeyRef = useRef('');
+
+  useEffect(() => {
+    if (studentLoading) return;
+    if (visibleLecturerKey === visibleLecturerKeyRef.current) return;
+    visibleLecturerKeyRef.current = visibleLecturerKey;
+    const isStillVisible = expandedLecturer
+      && filteredLecturers.some((lecturer) => lecturer.lecturerId === expandedLecturer);
+    setExpandedLecturer(isStillVisible ? expandedLecturer : (filteredLecturers[0]?.lecturerId || null));
+    setExpandedStudent(null);
+  }, [expandedLecturer, filteredLecturers, studentLoading, visibleLecturerKey]);
 
   const totalSessions = sessions.length;
   const totalCheckins = sessions.reduce((sum, session) => sum + (session.checkinCount || 0), 0);
@@ -261,6 +432,270 @@ const ExecutiveDashboard = () => {
       </button>
     </div>
   );
+
+  const renderStudentHistory = (student, historyId) => (
+    <div id={historyId} className="space-y-2 border-t border-gray-100 bg-gray-50 p-4">
+      <h4 className="text-sm font-semibold text-gray-700">Attendance history</h4>
+      {(student.history || []).length === 0 ? (
+        <p className="text-sm text-gray-500">No eligible session history.</p>
+      ) : student.history.map((entry, index) => (
+        <div key={`${entry.sessionId}-${index}`} className="rounded-lg border border-gray-200 bg-white p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900">{entry.subject || '—'}</p>
+              <p className="text-sm text-gray-500">
+                {formatDate(entry.sessionDate)} <span aria-hidden="true">•</span> {entry.year || 'Unspecified'} <span aria-hidden="true">•</span> {entry.batch || '—'}
+              </p>
+              <p className="text-xs text-gray-500">
+                {entry.branch || '—'} <span aria-hidden="true">•</span> Lecturer: {lecturerName(entry.lecturer)}
+              </p>
+            </div>
+            <span className={entry.status === 'present' ? 'badge badge-present self-start sm:self-auto' : 'badge badge-absent self-start sm:self-auto'}>
+              {entry.status === 'present' ? 'Present' : 'Absent'}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderClassStudents = (lecturer, attendanceClass) => {
+    const classStudents = aggregateStudentsForClass(students, lecturer.lecturerId, attendanceClass);
+    const searchQuery = (studentSearchByLecturer[lecturer.lecturerId] || '').trim().toLowerCase();
+    const displayStudents = searchQuery
+      ? classStudents.filter((student) =>
+        String(student.studentName || '').toLowerCase().includes(searchQuery)
+        || String(student.ncukId || '').toLowerCase().includes(searchQuery)
+      )
+      : classStudents;
+
+    const classSlug = String(attendanceClass.classKey).replace(/[^a-zA-Z0-9]+/g, '-');
+    const rowKey = (student) => `${lecturer.lecturerId}::${classSlug}::${student.studentRef}`;
+
+    const pdfFilter = {
+      year: attendanceClass.year,
+      batch: attendanceClass.batch,
+      branch: attendanceClass.branch,
+      subject: attendanceClass.subject,
+    };
+
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-block rounded bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+            {attendanceClass.year || 'Unspecified'}
+          </span>
+          <span className="inline-block rounded bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white">
+            {attendanceClass.batch || '—'}
+          </span>
+          <span className="inline-block rounded bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+            {attendanceClass.branch || '—'}
+          </span>
+          <span className="inline-block rounded bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+            {attendanceClass.subject || '—'}
+          </span>
+          <span className="text-xs text-gray-500">
+            {attendanceClass.sessionCount} session{attendanceClass.sessionCount === 1 ? '' : 's'}
+          </span>
+          {classStudents.length > 0 && (
+            <button
+              type="button"
+              onClick={() => exportClassAttendancePdf({ lecturer, attendanceClass, classStudents })}
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              aria-label={`Download class attendance PDF for ${attendanceClass.subject || 'class'}, ${lecturer.name}, ${attendanceClass.year}`}
+            >
+              Download Class PDF
+            </button>
+          )}
+        </div>
+
+        {classStudents.length > 0 && (
+          <div className="relative max-w-xs">
+            <FiSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <label htmlFor={`student-search-${lecturer.lecturerId}`} className="sr-only">
+              Search students in selected class
+            </label>
+            <input
+              id={`student-search-${lecturer.lecturerId}`}
+              type="search"
+              value={studentSearchByLecturer[lecturer.lecturerId] || ''}
+              onChange={(event) => setStudentSearchByLecturer((prev) => ({
+                ...prev,
+                [lecturer.lecturerId]: event.target.value,
+              }))}
+              className="input-field w-full pl-10 text-sm"
+              placeholder="Search by name or NCUK ID..."
+            />
+          </div>
+        )}
+
+        {classStudents.length === 0 ? (
+          <div className="py-6 text-center text-gray-400">
+            <FiUsers className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            <p className="text-sm">No students found for this class.</p>
+          </div>
+        ) : displayStudents.length === 0 ? (
+          <div className="py-8 text-center text-gray-400">
+            <p>No students match &quot;{studentSearchByLecturer[lecturer.lecturerId]}&quot;</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-left font-semibold text-gray-700">NCUK ID</th>
+                    <th scope="col" className="bg-gray-50 px-4 py-3 text-left font-semibold text-gray-700">Student</th>
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-center font-semibold text-gray-700">Eligible</th>
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-center font-semibold text-gray-700">Present</th>
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-center font-semibold text-gray-700">Absent</th>
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-left font-semibold text-gray-700">Attendance</th>
+                    <th scope="col" className="bg-gray-50 px-3 py-3 text-center font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayStudents.map((student, index) => {
+                    const isExpanded = expandedStudent === rowKey(student);
+                    const percentage = Math.min(100, Math.max(0, Number(student.attendancePercentage) || 0));
+                    const historyId = `student-history-${lecturer.lecturerId}-${classSlug}-${student.studentRef}`;
+                    return (
+                      <Fragment key={student.studentRef}>
+                        <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                          <td className="px-3 py-2 font-mono text-xs text-gray-700">{student.ncukId || '—'}</td>
+                          <td className="px-4 py-2">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedStudent(isExpanded ? null : rowKey(student))}
+                              aria-expanded={isExpanded}
+                              aria-controls={historyId}
+                              className="flex w-full items-center gap-2 text-left font-medium text-gray-900 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
+                            >
+                              <span className="min-w-0 flex-1 truncate">{student.studentName || 'Unknown student'}</span>
+                              {isExpanded ? <FiChevronUp className="h-4 w-4 flex-shrink-0 text-gray-400" /> : <FiChevronDown className="h-4 w-4 flex-shrink-0 text-gray-400" />}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-700">{student.eligibleSessions}</td>
+                          <td className="px-3 py-2 text-center font-medium text-green-700">{student.presentCount}</td>
+                          <td className="px-3 py-2 text-center font-medium text-red-700">{student.absentCount}</td>
+                          <td className="px-3 py-2">
+                            <div className="mb-1 flex justify-between text-xs">
+                              <span className="text-gray-500">Attendance</span>
+                              <span className="font-semibold text-gray-900">{formatPercentage(student.attendancePercentage)}%</span>
+                            </div>
+                            <div
+                              className="h-2 overflow-hidden rounded-full bg-gray-200"
+                              role="progressbar"
+                              aria-label={`${student.studentName} attendance`}
+                              aria-valuemin="0"
+                              aria-valuemax="100"
+                              aria-valuenow={percentage}
+                            >
+                              <div className="h-full rounded-full bg-primary-600" style={{ width: `${percentage}%` }} />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => exportStudentAttendancePdf(student, pdfFilter)}
+                              className="rounded-lg p-2 text-primary-700 hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              aria-label={`Download attendance PDF for ${student.studentName}`}
+                              title="Download PDF"
+                            >
+                              <FiDownload className="h-5 w-5" />
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} className="bg-gray-50 p-0">
+                              {renderStudentHistory(student, historyId)}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-3 lg:hidden">
+              {displayStudents.map((student) => {
+                const isExpanded = expandedStudent === rowKey(student);
+                const percentage = Math.min(100, Math.max(0, Number(student.attendancePercentage) || 0));
+                const historyId = `student-history-mobile-${lecturer.lecturerId}-${classSlug}-${student.studentRef}`;
+                return (
+                  <article key={student.studentRef} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <div className="flex items-stretch">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedStudent(isExpanded ? null : rowKey(student))}
+                        aria-expanded={isExpanded}
+                        aria-controls={historyId}
+                        className="min-w-0 flex-1 p-4 text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
+                      >
+                        <div className="flex flex-col gap-4">
+                          <div className="min-w-0">
+                            <h3 className="truncate font-semibold text-gray-900">{student.studentName || 'Unknown student'}</h3>
+                            <p className="text-xs text-gray-500">NCUK: {student.ncukId || '—'}</p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                            <div>
+                              <p className="font-bold text-gray-900">{student.eligibleSessions}</p>
+                              <p className="text-xs text-gray-500">Eligible</p>
+                            </div>
+                            <div>
+                              <p className="font-bold text-green-700">{student.presentCount}</p>
+                              <p className="text-xs text-gray-500">Present</p>
+                            </div>
+                            <div>
+                              <p className="font-bold text-red-700">{student.absentCount}</p>
+                              <p className="text-xs text-gray-500">Absent</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <div className="mb-1 flex justify-between text-xs">
+                                <span className="text-gray-500">Attendance</span>
+                                <span className="font-semibold text-gray-900">{formatPercentage(student.attendancePercentage)}%</span>
+                              </div>
+                              <div
+                                className="h-2 overflow-hidden rounded-full bg-gray-200"
+                                role="progressbar"
+                                aria-label={`${student.studentName} attendance`}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow={percentage}
+                              >
+                                <div className="h-full rounded-full bg-primary-600" style={{ width: `${percentage}%` }} />
+                              </div>
+                            </div>
+                            {isExpanded ? <FiChevronUp className="h-5 w-5 text-gray-400" /> : <FiChevronDown className="h-5 w-5 text-gray-400" />}
+                          </div>
+                        </div>
+                      </button>
+                      <div className="flex items-center border-l border-gray-100 px-2 sm:px-3">
+                        <button
+                          type="button"
+                          onClick={() => exportStudentAttendancePdf(student, pdfFilter)}
+                          className="rounded-lg p-2 text-primary-700 hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          aria-label={`Download attendance PDF for ${student.studentName}`}
+                          title="Download PDF"
+                        >
+                          <FiDownload className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                    {isExpanded && renderStudentHistory(student, historyId)}
+                  </article>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -366,139 +801,148 @@ const ExecutiveDashboard = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="card flex items-center gap-3 p-4">
-              <div className="rounded-xl bg-primary-50 p-3"><FiUsers className="h-5 w-5 text-primary-600" /></div>
-              <div><p className="text-xs text-gray-500 sm:text-sm">Total Students</p><p className="text-2xl font-bold text-gray-900">{students.length}</p></div>
+          {studentLoading && students.length === 0 ? (
+            <div className="card py-12 text-center" aria-live="polite">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+              <p className="mt-3 text-sm text-gray-500">Loading student reports…</p>
             </div>
-            <div className="card flex items-center gap-3 p-4">
-              <div className="rounded-xl bg-green-50 p-3"><FiCheckCircle className="h-5 w-5 text-green-600" /></div>
-              <div><p className="text-xs text-gray-500 sm:text-sm">Present Records</p><p className="text-2xl font-bold text-gray-900">{studentTotals.present}</p></div>
+          ) : students.length === 0 ? (
+            <div className="card py-16 text-center text-gray-500">
+              <FiUsers className="mx-auto mb-4 h-12 w-12 text-gray-300" />
+              <h3 className="mb-2 text-lg font-semibold text-gray-700">
+                {hasAppliedFilters ? 'No students found' : 'No Student Attendance Yet'}
+              </h3>
+              <p className="mx-auto max-w-md">
+                {hasAppliedFilters
+                  ? 'No students found for the selected filters.'
+                  : 'When attendance sessions with roster snapshots are recorded, lecturer attendance reviews will appear here.'}
+              </p>
             </div>
-            <div className="card flex items-center gap-3 p-4">
-              <div className="rounded-xl bg-red-50 p-3"><FiXCircle className="h-5 w-5 text-red-600" /></div>
-              <div><p className="text-xs text-gray-500 sm:text-sm">Absent Records</p><p className="text-2xl font-bold text-gray-900">{studentTotals.absent}</p></div>
-            </div>
-            <div className="card flex items-center gap-3 p-4">
-              <div className="rounded-xl bg-amber-50 p-3"><FiPercent className="h-5 w-5 text-amber-600" /></div>
-              <div><p className="text-xs text-gray-500 sm:text-sm">Average Attendance</p><p className="text-2xl font-bold text-gray-900">{formatPercentage(studentTotals.average)}%</p></div>
-            </div>
-          </div>
+          ) : (
+            <>
+              {studentLoading && (
+                <p className="text-xs text-gray-500">Refreshing student reports…</p>
+              )}
 
-          <div className="card space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Students ({students.length})</h2>
-                {studentLoading && students.length > 0 && <p className="text-xs text-gray-500">Refreshing student reports…</p>}
-              </div>
-              <div className="relative w-full sm:max-w-sm">
-                <FiSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <label htmlFor="student-report-search" className="sr-only">Search student reports</label>
-                <input
-                  id="student-report-search"
-                  type="search"
-                  value={studentSearch}
-                  onChange={(event) => setStudentSearch(event.target.value)}
-                  className="input-field pl-10 text-sm"
-                  placeholder="Search name, MIE ID, or NCUK ID"
-                />
-              </div>
-            </div>
+              {lecturerGroups.length > 0 && (
+                <div className="card">
+                  <div className="relative">
+                    <FiSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <label htmlFor="lecturer-attendance-search" className="sr-only">Search by lecturer name</label>
+                    <input
+                      id="lecturer-attendance-search"
+                      type="search"
+                      value={lecturerSearch}
+                      onChange={(event) => setLecturerSearch(event.target.value)}
+                      className="input-field pl-10 text-sm"
+                      placeholder="Search by lecturer name..."
+                    />
+                  </div>
+                </div>
+              )}
 
-            {studentLoading && students.length === 0 ? (
-              <div className="py-12 text-center" aria-live="polite">
-                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-                <p className="mt-3 text-sm text-gray-500">Loading student reports…</p>
-              </div>
-            ) : students.length === 0 ? (
-              <div className="py-12 text-center text-gray-500">
-                <FiUsers className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-                <p>{hasAppliedFilters ? 'No students found for the selected filters.' : 'No student attendance reports are available yet.'}</p>
-              </div>
-            ) : filteredStudents.length === 0 ? (
-              <div className="py-10 text-center text-gray-500">No students match “{studentSearch}”.</div>
-            ) : (
-              <div className="space-y-3">
-                {filteredStudents.map((student) => {
-                  const isExpanded = expandedStudent === student.studentRef;
-                  const percentage = Math.min(100, Math.max(0, Number(student.attendancePercentage) || 0));
-                  const historyId = `student-history-${student.studentRef}`;
-                  return (
-                    <article key={student.studentRef} className="overflow-hidden rounded-xl border border-gray-200">
-                      <div className="flex items-stretch">
+              {filteredLecturers.length === 0 ? (
+                <div className="card py-16 text-center">
+                  <FiBookOpen className="mx-auto mb-4 h-12 w-12 text-gray-300" />
+                  <h3 className="mb-2 text-lg font-semibold text-gray-700">
+                    {lecturerQuery ? 'No matching lecturers' : 'No lecturer attendance found'}
+                  </h3>
+                  <p className="mx-auto max-w-md text-gray-500">
+                    {lecturerQuery
+                      ? `No lecturers found matching "${lecturerQuery}".`
+                      : 'Attendance history for the current filters has no lecturer records to review.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredLecturers.map((lecturer) => {
+                    const isExpanded = expandedLecturer === lecturer.lecturerId;
+                    const selectedClassKey = activeClassByLecturer[lecturer.lecturerId] || lecturer.classes[0]?.classKey || '';
+                    const selectedClass = lecturer.classes.find((item) => item.classKey === selectedClassKey)
+                      || lecturer.classes[0]
+                      || null;
+                    const panelId = `lecturer-attendance-panel-${lecturer.lecturerId}`;
+
+                    return (
+                      <div key={lecturer.lecturerId} className="card overflow-hidden">
                         <button
                           type="button"
-                          onClick={() => setExpandedStudent(isExpanded ? null : student.studentRef)}
+                          onClick={() => {
+                            setExpandedLecturer(isExpanded ? null : lecturer.lecturerId);
+                            setExpandedStudent(null);
+                          }}
                           aria-expanded={isExpanded}
-                          aria-controls={historyId}
-                          className="min-w-0 flex-1 p-4 text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
+                          aria-controls={panelId}
+                          className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
                         >
-                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                            <div className="flex min-w-0 flex-1 items-center gap-3">
-                              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold text-primary-700">
-                                {(student.studentName || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <h3 className="truncate font-semibold text-gray-900">{student.studentName || 'Unknown student'}</h3>
-                                <p className="text-xs text-gray-500">MIE: {student.mieStudentId || '—'} <span aria-hidden="true">•</span> NCUK: {student.ncukId || '—'}</p>
-                              </div>
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary-100">
+                              <span className="text-sm font-bold text-primary-700">
+                                {initialsFromName(lecturer.name)}
+                              </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-3 text-center text-sm lg:w-64">
-                              <div><p className="font-bold text-gray-900">{student.eligibleSessions ?? 0}</p><p className="text-xs text-gray-500">Eligible</p></div>
-                              <div><p className="font-bold text-green-700">{student.presentCount ?? 0}</p><p className="text-xs text-gray-500">Present</p></div>
-                              <div><p className="font-bold text-red-700">{student.absentCount ?? 0}</p><p className="text-xs text-gray-500">Absent</p></div>
-                            </div>
-                            <div className="flex items-center gap-3 lg:w-52">
-                              <div className="flex-1">
-                                <div className="mb-1 flex justify-between text-xs"><span className="text-gray-500">Attendance</span><span className="font-semibold text-gray-900">{formatPercentage(student.attendancePercentage)}%</span></div>
-                                <div className="h-2 overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-label={`${student.studentName} attendance`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percentage}>
-                                  <div className="h-full rounded-full bg-primary-600" style={{ width: `${percentage}%` }} />
-                                </div>
-                              </div>
-                              {isExpanded ? <FiChevronUp className="h-5 w-5 text-gray-400" /> : <FiChevronDown className="h-5 w-5 text-gray-400" />}
+                            <div className="min-w-0">
+                              <h3 className="truncate font-semibold text-gray-900">{lecturer.name}</h3>
+                              <p className="text-sm text-gray-500">
+                                {lecturer.classCount} class{lecturer.classCount === 1 ? '' : 'es'}
+                                {' '}
+                                <span aria-hidden="true">•</span>
+                                {' '}
+                                {lecturer.studentCount} student{lecturer.studentCount === 1 ? '' : 's'}
+                              </p>
                             </div>
                           </div>
+                          {isExpanded
+                            ? <FiChevronUp className="h-5 w-5 flex-shrink-0 text-gray-400" />
+                            : <FiChevronDown className="h-5 w-5 flex-shrink-0 text-gray-400" />}
                         </button>
-                        <div className="flex items-center border-l border-gray-100 px-2 sm:px-3">
-                          <button
-                            type="button"
-                            onClick={() => exportStudentAttendancePdf(student, appliedFilters)}
-                            className="rounded-lg p-2 text-primary-700 hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            aria-label={`Download attendance PDF for ${student.studentName}`}
-                            title="Download PDF"
-                          >
-                            <FiDownload className="h-5 w-5" />
-                          </button>
-                        </div>
-                      </div>
 
-                      {isExpanded && (
-                        <div id={historyId} className="space-y-2 border-t border-gray-100 bg-gray-50 p-4">
-                          <h4 className="text-sm font-semibold text-gray-700">Attendance history</h4>
-                          {(student.history || []).length === 0 ? (
-                            <p className="text-sm text-gray-500">No eligible session history.</p>
-                          ) : student.history.map((entry, index) => (
-                            <div key={`${entry.sessionId}-${index}`} className="rounded-lg border border-gray-200 bg-white p-3">
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                  <p className="font-medium text-gray-900">{entry.subject || '—'}</p>
-                                  <p className="text-sm text-gray-500">{formatDate(entry.sessionDate)} <span aria-hidden="true">•</span> {entry.year || 'Unspecified'} <span aria-hidden="true">•</span> {entry.batch || '—'}</p>
-                                  <p className="text-xs text-gray-500">{entry.branch || '—'} <span aria-hidden="true">•</span> Lecturer: {lecturerName(entry.lecturer)}</p>
+                        {isExpanded && (
+                          <div id={panelId} className="space-y-4 border-t border-gray-100 bg-gray-50/50 p-4">
+                            <div className="space-y-2">
+                              {Object.keys(lecturer.classesByBatch).map((batchLabel) => (
+                                <div key={batchLabel} className="flex flex-wrap items-center gap-2">
+                                  <span className="w-20 flex-shrink-0 text-xs font-semibold text-gray-500">{batchLabel}</span>
+                                  {lecturer.classesByBatch[batchLabel].map((attendanceClass) => {
+                                    const isActive = selectedClass?.classKey === attendanceClass.classKey;
+                                    return (
+                                      <button
+                                        key={attendanceClass.classKey}
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveClassByLecturer((prev) => ({
+                                            ...prev,
+                                            [lecturer.lecturerId]: attendanceClass.classKey,
+                                          }));
+                                          setExpandedStudent(null);
+                                        }}
+                                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${
+                                          isActive
+                                            ? 'bg-primary-600 text-white'
+                                            : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        <span className="text-xs opacity-75">{attendanceClass.year}</span>
+                                        <span className="text-xs opacity-75">{attendanceClass.branch}</span>
+                                        <span>{attendanceClass.subject}</span>
+                                        <span className="text-xs opacity-75">({attendanceClass.studentCount})</span>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
-                                <span className={entry.status === 'present' ? 'badge badge-present self-start sm:self-auto' : 'badge badge-absent self-start sm:self-auto'}>
-                                  {entry.status === 'present' ? 'Present' : 'Absent'}
-                                </span>
-                              </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+
+                            {selectedClass && renderClassStudents(lecturer, selectedClass)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </section>
       )}
 
