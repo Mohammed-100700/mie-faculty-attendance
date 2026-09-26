@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiClock, FiArrowLeft, FiUsers, FiCheckCircle, FiXCircle } from 'react-icons/fi';
-import { saveAttendance, closeSession, getSession, getCheckins } from '../api/attendanceSessionApi';
+import { FiClock, FiArrowLeft, FiUsers, FiCheckCircle, FiXCircle, FiAlertCircle } from 'react-icons/fi';
+import { saveAttendance, closeSession, cancelSession, getSession, getCheckins } from '../api/attendanceSessionApi';
 
 const presentRefs = (rows) => rows.filter((row) => row.status === 'present')
   .map((row) => String(row.studentRef));
@@ -11,6 +11,9 @@ const sameRefSet = (left, right) => {
   const rightSet = new Set(right);
   return leftSet.size === rightSet.size && [...leftSet].every((ref) => rightSet.has(ref));
 };
+
+const CANCEL_REASON_MIN = 3;
+const CANCEL_REASON_MAX = 300;
 
 const SessionCheckins = () => {
   const { id } = useParams();
@@ -26,9 +29,20 @@ const SessionCheckins = () => {
   const [savedSelectedRefs, setSavedSelectedRefs] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelPanelOpen, setCancelPanelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState('');
+  // Cancellation is derived from the session itself, so it is authoritative
+  // after a reload as well as immediately after cancelling.
+  const isCancelled = Boolean(session?.cancelledAt);
+  const cancelReasonLength = cancelReason.trim().length;
+  const isCancelReasonValid =
+    cancelReasonLength >= CANCEL_REASON_MIN && cancelReasonLength <= CANCEL_REASON_MAX;
+  // A cancelled session is always read-only, independent of isActive.
   const isEditable = attendanceMode === 'linked' && session?.isActive &&
-    session.rosterSnapshot !== undefined;
-  const isBusy = isSaving || isClosing;
+    session.rosterSnapshot !== undefined && !isCancelled;
+  const isBusy = isSaving || isClosing || isCancelling;
   const hasUnsavedChanges = !sameRefSet(selectedRefs, savedSelectedRefs);
 
   useEffect(() => {
@@ -37,6 +51,9 @@ const SessionCheckins = () => {
       setLoading(true);
       setError('');
       setActionError('');
+      setCancelPanelOpen(false);
+      setCancelReason('');
+      setCancelError('');
       try {
         const [sessionRes, checkinsRes] = await Promise.all([getSession(id), getCheckins(id)]);
         if (cancelled) return;
@@ -112,6 +129,177 @@ const SessionCheckins = () => {
     });
   };
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'Date unavailable';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
+    return date.toLocaleString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  };
+
+  const openCancelPanel = () => {
+    if (isBusy || isCancelled) return;
+    setActionError('');
+    setCancelError('');
+    setCancelPanelOpen(true);
+  };
+
+  const keepSession = () => {
+    if (isCancelling) return;
+    setCancelPanelOpen(false);
+    setCancelReason('');
+    setCancelError('');
+  };
+
+  const handleCancelSession = async () => {
+    if (isBusy || isCancelled) return;
+
+    // Local guard mirrors the backend contract so an obviously invalid reason
+    // never reaches the API. The backend remains the authority.
+    const normalizedReason = cancelReason.trim();
+    if (normalizedReason.length < CANCEL_REASON_MIN) {
+      setCancelError(`Enter a cancellation reason of at least ${CANCEL_REASON_MIN} characters.`);
+      return;
+    }
+    if (normalizedReason.length > CANCEL_REASON_MAX) {
+      setCancelError(`Cancellation reason must be ${CANCEL_REASON_MAX} characters or fewer.`);
+      return;
+    }
+
+    setIsCancelling(true);
+    setCancelError('');
+    try {
+      // Cancellation never auto-saves: local checkbox edits are discarded, not
+      // persisted, and the saved server set becomes the source of truth again.
+      const res = await cancelSession(id, normalizedReason);
+      setSession(res.data.data);
+      setSelectedRefs(savedSelectedRefs);
+      setCancelPanelOpen(false);
+      setCancelReason('');
+    } catch (err) {
+      setCancelError(err.response?.data?.message || 'Failed to cancel session. Please try again.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const renderCancelledBanner = () => (
+    <div className="card border-red-200 bg-red-50 text-sm text-red-800" role="status">
+      <div className="flex items-start gap-2">
+        <FiAlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+        <div className="min-w-0 space-y-1">
+          <p className="font-semibold">
+            This session is cancelled. Attendance is read-only and can no longer be changed.
+          </p>
+          <p>
+            <span className="font-medium">Cancellation reason:</span>{' '}
+            {session.cancellationReason || 'No reason recorded.'}
+          </p>
+          <p>
+            <span className="font-medium">Cancelled on:</span>{' '}
+            {formatDateTime(session.cancelledAt)}
+          </p>
+          <p className="text-red-700">
+            The session record, roster snapshot, and recorded check-ins are preserved for audit and this
+            session is excluded from attendance reports.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCancelSection = () => {
+    if (isCancelled) return null;
+
+    if (!cancelPanelOpen) {
+      return (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-gray-500">
+            Cancelling is permanent. The session is kept for audit only and is excluded from attendance reports.
+          </p>
+          <button
+            type="button"
+            onClick={openCancelPanel}
+            disabled={isBusy}
+            className="btn-secondary justify-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            Cancel Session
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <section className="card space-y-4 border-red-200 bg-red-50" aria-labelledby="cancel-session-heading">
+        <div className="flex items-start gap-2 text-red-800">
+          <FiAlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+          <div className="min-w-0 space-y-1 text-sm">
+            <h2 id="cancel-session-heading" className="text-base font-semibold text-gray-900">
+              Cancel this session?
+            </h2>
+            <p>
+              Cancellation is permanent. The session, its roster snapshot, and its recorded check-ins are
+              preserved as an audit record, and the session is excluded from attendance reports.
+            </p>
+            {hasUnsavedChanges && (
+              <p className="font-medium">
+                Unsaved attendance changes will be discarded if this session is cancelled.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="cancel-reason">Cancellation reason</label>
+          <textarea
+            id="cancel-reason"
+            rows={3}
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            disabled={isCancelling}
+            placeholder="Explain why this session is being cancelled..."
+            aria-describedby="cancel-reason-help"
+            aria-invalid={cancelError ? 'true' : undefined}
+            className="input-field text-sm"
+          />
+          <p id="cancel-reason-help" className="mt-1 text-xs text-gray-600">
+            Required. {CANCEL_REASON_MIN}–{CANCEL_REASON_MAX} characters. {cancelReasonLength} entered.
+          </p>
+        </div>
+
+        {cancelError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700"
+          >
+            {cancelError}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={handleCancelSession}
+            disabled={isBusy || !isCancelReasonValid}
+            className="btn-danger justify-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+          </button>
+          <button
+            type="button"
+            onClick={keepSession}
+            disabled={isCancelling}
+            className="btn-secondary justify-center text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            Keep Session
+          </button>
+        </div>
+      </section>
+    );
+  };
+
   const renderLegacyMode = () => {
     const students = checkins || [];
 
@@ -139,10 +327,18 @@ const SessionCheckins = () => {
             <p className="text-xs text-gray-500">Students Checked In</p>
             <p className="text-2xl font-bold text-gray-900">{students.length}</p>
           </div>
-          <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${session.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-            {session.isActive ? 'Active' : 'Closed'}
+          <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+            isCancelled
+              ? 'bg-red-100 text-red-800'
+              : session.isActive
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-600'
+          }`}>
+            {isCancelled ? 'Cancelled' : session.isActive ? 'Active' : 'Closed'}
           </div>
         </div>
+
+        {isCancelled && renderCancelledBanner()}
 
         {/* Checkins list */}
         <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
@@ -184,6 +380,8 @@ const SessionCheckins = () => {
             <strong>Note:</strong> Student checkin data is for reference only. To record official attendance, please use the <strong>Submit Attendance</strong> page where you can manually enter class details for Academic Manager approval.
           </p>
         </div>
+
+        {renderCancelSection()}
       </div>
     );
   };
@@ -233,12 +431,18 @@ const SessionCheckins = () => {
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">Session Attendance</h1>
             <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-              session.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+              isCancelled
+                ? 'bg-red-100 text-red-800'
+                : session.isActive
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-600'
             }`}>
-              {session.isActive
-                ? <FiCheckCircle className="h-4 w-4" aria-hidden="true" />
-                : <FiXCircle className="h-4 w-4" aria-hidden="true" />}
-              {session.isActive ? 'Active' : 'Closed'}
+              {isCancelled
+                ? <FiAlertCircle className="h-4 w-4" aria-hidden="true" />
+                : session.isActive
+                  ? <FiCheckCircle className="h-4 w-4" aria-hidden="true" />
+                  : <FiXCircle className="h-4 w-4" aria-hidden="true" />}
+              {isCancelled ? 'Cancelled' : session.isActive ? 'Active' : 'Closed'}
             </span>
           </div>
           <p className="mt-1 text-sm text-gray-500">
@@ -249,7 +453,7 @@ const SessionCheckins = () => {
         </div>
       </div>
 
-      {!isEditable && (
+      {!isEditable && !isCancelled && (
         <div className="card border-blue-200 bg-blue-50 text-sm text-blue-700">
           {!session.isActive && <p>This session is closed. Attendance is read-only.</p>}
           {session.rosterSnapshot === undefined && (
@@ -257,6 +461,8 @@ const SessionCheckins = () => {
           )}
         </div>
       )}
+
+      {isCancelled && renderCancelledBanner()}
 
       {actionError && <div role="alert" className="bg-red-50 text-red-700 p-4 rounded-lg">{actionError}</div>}
 
@@ -378,6 +584,8 @@ const SessionCheckins = () => {
           </>
         )}
       </section>
+
+      {renderCancelSection()}
 
       {isEditable && (
         <div className="sticky bottom-2 z-20 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:bottom-4 sm:p-4">

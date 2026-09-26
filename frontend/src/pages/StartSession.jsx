@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlay, FiClock, FiCheckCircle, FiUsers } from 'react-icons/fi';
+import { FiPlay, FiClock, FiCheckCircle, FiUsers, FiAlertCircle } from 'react-icons/fi';
 import { createSessionFromSheet, getMySessions } from '../api/attendanceSessionApi';
 import { getWorkbook } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
@@ -71,8 +71,15 @@ const StartSession = () => {
 
   const sheets = workbook?.sheets || [];
   const hasSheets = sheets.length > 0;
-  const activeSessions = sessions.filter((session) => session.isActive === true);
-  const closedSessions = sessions.filter((session) => session.isActive === false);
+  // A session belongs to exactly one group. Cancellation is independent of
+  // isActive, so it is evaluated for both remaining groups.
+  const cancelledSessions = sessions.filter((session) => Boolean(session.cancelledAt));
+  const activeSessions = sessions.filter(
+    (session) => session.isActive === true && !session.cancelledAt
+  );
+  const closedSessions = sessions.filter(
+    (session) => session.isActive === false && !session.cancelledAt
+  );
   const canStart =
     loading === 'idle' &&
     Boolean(workbook?._id) &&
@@ -121,12 +128,18 @@ const StartSession = () => {
     });
   };
 
-  const renderSessionCard = (session, isActive) => {
+  const renderSessionCard = (session, status) => {
     const presentCount = session.checkinCount ?? 0;
+    const isActive = status === 'active';
+    const isCancelled = status === 'cancelled';
     return (
       <article
         key={session._id}
-        className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors"
+        className={`rounded-lg border bg-white p-4 transition-colors ${
+          isCancelled
+            ? 'border-red-200 hover:border-red-300'
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -156,15 +169,23 @@ const StartSession = () => {
           </div>
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-              isActive
-                ? 'bg-green-100 text-green-800'
-                : 'bg-gray-100 text-gray-700'
+              isCancelled
+                ? 'bg-red-100 text-red-800'
+                : isActive
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-gray-100 text-gray-700'
             }`}
           >
-            {isActive ? 'Active' : 'Closed'}
+            {isCancelled ? 'Cancelled' : isActive ? 'Active' : 'Closed'}
           </span>
         </div>
-        <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
+        {isCancelled && (
+          <p className="mt-2 rounded bg-red-50 px-2 py-1 text-xs text-red-800">
+            <span className="font-semibold">Reason:</span>{' '}
+            {session.cancellationReason || 'No reason recorded.'}
+          </p>
+        )}
+        <div className={`flex items-center justify-between text-sm text-gray-600 ${isCancelled ? 'mt-2' : 'mt-3'}`}>
           <div className="flex items-center gap-1">
             <FiUsers className="w-4 h-4" />
             <span className="font-medium text-gray-800">{presentCount}</span>
@@ -182,11 +203,11 @@ const StartSession = () => {
     );
   };
 
-  const renderSessionGroup = (title, groupSessions, isActive, icon) => (
-    <section aria-labelledby={`${isActive ? 'active' : 'closed'}-sessions-heading`}>
+  const renderSessionGroup = (title, groupSessions, status, icon) => (
+    <section aria-labelledby={`${status}-sessions-heading`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3
-          id={`${isActive ? 'active' : 'closed'}-sessions-heading`}
+          id={`${status}-sessions-heading`}
           className="flex items-center gap-2 font-semibold text-gray-900"
         >
           <span className="text-lg">{icon}</span>
@@ -196,11 +217,11 @@ const StartSession = () => {
       </div>
       {groupSessions.length === 0 ? (
         <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
-          {isActive ? 'No active sessions.' : 'No closed sessions.'}
+          No {status} sessions.
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {groupSessions.map((session) => renderSessionCard(session, isActive))}
+          {groupSessions.map((session) => renderSessionCard(session, status))}
         </div>
       )}
     </section>
@@ -339,8 +360,9 @@ const StartSession = () => {
             </p>
           ) : (
             <div className="space-y-8">
-              {renderSessionGroup('Active Sessions', activeSessions, true, <FiClock className="w-5 h-5 text-green-600" />)}
-              {renderSessionGroup('Closed Sessions', closedSessions, false, <FiCheckCircle className="w-5 h-5 text-gray-500" />)}
+              {renderSessionGroup('Active Sessions', activeSessions, 'active', <FiClock className="w-5 h-5 text-green-600" />)}
+              {renderSessionGroup('Closed Sessions', closedSessions, 'closed', <FiCheckCircle className="w-5 h-5 text-gray-500" />)}
+              {renderSessionGroup('Cancelled Sessions', cancelledSessions, 'cancelled', <FiAlertCircle className="w-5 h-5 text-red-600" />)}
             </div>
           )}
         </section>

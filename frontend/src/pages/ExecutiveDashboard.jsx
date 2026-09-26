@@ -44,6 +44,15 @@ const lecturerName = (lecturer) => {
   return lecturer?.name || '—';
 };
 
+const cancelledByLabel = (cancelledBy) => {
+  if (!cancelledBy) return '—';
+  if (typeof cancelledBy === 'string') return cancelledBy;
+  const name = cancelledBy.name || 'Unknown user';
+  return cancelledBy.email ? `${name} (${cancelledBy.email})` : name;
+};
+
+const isCancelledSession = (session) => Boolean(session.cancelledAt) || Boolean(session.isCancelled);
+
 const initialsFromName = (name) =>
   String(name || '?')
     .split(/\s+/)
@@ -214,6 +223,7 @@ const ExecutiveDashboard = () => {
   const [sessions, setSessions] = useState([]);
   const [students, setStudents] = useState([]);
   const [excludedLegacyCount, setExcludedLegacyCount] = useState(0);
+  const [excludedCancelledCount, setExcludedCancelledCount] = useState(0);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [studentLoading, setStudentLoading] = useState(true);
   const [sessionError, setSessionError] = useState('');
@@ -309,6 +319,7 @@ const ExecutiveDashboard = () => {
       if (requestId !== studentRequestId.current) return;
       setStudents(response.data.data || []);
       setExcludedLegacyCount(response.data.excludedLegacySessionCount || 0);
+      setExcludedCancelledCount(response.data.excludedCancelledSessionCount || 0);
     } catch (error) {
       if (requestId === studentRequestId.current) {
         console.error('Failed to fetch student reports:', error);
@@ -397,13 +408,22 @@ const ExecutiveDashboard = () => {
     setExpandedStudent(null);
   }, [expandedLecturer, filteredLecturers, studentLoading, visibleLecturerKey]);
 
-  const totalSessions = sessions.length;
-  const totalCheckins = sessions.reduce((sum, session) => sum + (session.checkinCount || 0), 0);
+  // Cancelled sessions stay listed for auditing but must not influence
+  // reportable totals or exports. Both the raw timestamp and the server
+  // boolean are honoured.
+  const reportableSessions = useMemo(
+    () => sessions.filter((session) => !session.cancelledAt && !session.isCancelled),
+    [sessions]
+  );
+  const cancelledSessionCount = sessions.length - reportableSessions.length;
+
+  const totalSessions = reportableSessions.length;
+  const totalCheckins = reportableSessions.reduce((sum, session) => sum + (session.checkinCount || 0), 0);
   const avgCheckins = totalSessions > 0 ? Math.round(totalCheckins / totalSessions) : 0;
   const hasAppliedFilters = ['year', 'batch', 'branch', 'subject'].some((key) => appliedFilters[key]);
   const reportBranch = isAcademicManager ? managedBranch : appliedFilters.branch;
 
-  const exportLogs = sessions.map((session) => ({
+  const exportLogs = reportableSessions.map((session) => ({
     ...session,
     date: session.sessionDate,
     remarks: [
@@ -801,6 +821,15 @@ const ExecutiveDashboard = () => {
             </div>
           )}
 
+          {excludedCancelledCount > 0 && (
+            <div className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              <FiInfo className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <p>
+                {excludedCancelledCount} cancelled session{excludedCancelledCount === 1 ? '' : 's'} excluded from student attendance figures. Cancelled sessions remain available in the Sessions tab for auditing.
+              </p>
+            </div>
+          )}
+
           {studentLoading && students.length === 0 ? (
             <div className="card py-12 text-center" aria-live="polite">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
@@ -956,7 +985,16 @@ const ExecutiveDashboard = () => {
             <div className="card flex items-center gap-4"><div className="rounded-xl bg-orange-50 p-3"><FiClock className="h-6 w-6 text-orange-600" /></div><div><p className="text-sm text-gray-500">Avg per Session</p><p className="text-2xl font-bold text-gray-900">{avgCheckins}</p></div></div>
           </div>
 
-          {sessions.length > 0 && (
+          {cancelledSessionCount > 0 && (
+            <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <FiInfo className="mt-0.5 h-5 w-5 flex-shrink-0" />
+              <p>
+                {cancelledSessionCount} cancelled session{cancelledSessionCount === 1 ? '' : 's'} shown for audit only. They are excluded from the totals above and from session exports.
+              </p>
+            </div>
+          )}
+
+          {reportableSessions.length > 0 && (
             <div className="flex justify-end">
               <ExportButtons logs={exportLogs} month={new Date().getMonth() + 1} year={appliedFilters.year || new Date().getFullYear()} variant="manager" managedBranch={reportBranch || ''} userName={user?.name} />
             </div>
@@ -976,8 +1014,9 @@ const ExecutiveDashboard = () => {
                 {sessions.map((session) => {
                   const isExpanded = expandedSession === session._id;
                   const detailsId = `session-details-${session._id}`;
+                  const isCancelled = isCancelledSession(session);
                   return (
-                    <div key={session._id} className="overflow-hidden rounded-lg border border-gray-200">
+                    <div key={session._id} className={`overflow-hidden rounded-lg border ${isCancelled ? 'border-red-200' : 'border-gray-200'}`}>
                       <button
                         type="button"
                         onClick={() => setExpandedSession(isExpanded ? null : session._id)}
@@ -991,6 +1030,11 @@ const ExecutiveDashboard = () => {
                             <span className="rounded bg-primary-600 px-2 py-0.5 text-xs font-semibold text-white">{session.batch}</span>
                             <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">{session.branch}</span>
                             {session.subject && <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">{session.subject}</span>}
+                            {isCancelled && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                                Cancelled
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500"><span>{formatDate(session.sessionDate, true)}</span><span aria-hidden="true">•</span><span>{session.lecturerId?.name || 'Unknown lecturer'}</span></div>
                         </div>
@@ -998,15 +1042,36 @@ const ExecutiveDashboard = () => {
                       </button>
 
                       {isExpanded && (
-                        <div id={detailsId} className="border-t border-gray-100 bg-gray-50 p-4">
-                          <p className="mb-2 text-sm font-medium text-gray-700">Checked-in Students</p>
-                          {session.checkins?.length ? (
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                              {session.checkins.map((checkin) => (
-                                <div key={checkin._id} className="rounded bg-white px-3 py-2 text-sm"><p className="font-medium text-gray-900">{checkin.studentName}</p>{checkin.studentId && <p className="text-xs text-gray-400">Roll: {checkin.studentId}</p>}</div>
-                              ))}
+                        <div id={detailsId} className="space-y-4 border-t border-gray-100 bg-gray-50 p-4">
+                          {isCancelled && (
+                            <div className="rounded-lg border border-red-200 bg-white p-3 text-sm text-red-800">
+                              <p className="font-semibold">Cancellation details</p>
+                              <dl className="mt-1 space-y-1">
+                                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                                  <dt className="font-medium sm:w-32">Reason</dt>
+                                  <dd className="min-w-0 break-words">{session.cancellationReason || 'No reason recorded.'}</dd>
+                                </div>
+                                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                                  <dt className="font-medium sm:w-32">Cancelled on</dt>
+                                  <dd>{formatDate(session.cancelledAt, true)}</dd>
+                                </div>
+                                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                                  <dt className="font-medium sm:w-32">Cancelled by</dt>
+                                  <dd className="min-w-0 break-words">{cancelledByLabel(session.cancelledBy)}</dd>
+                                </div>
+                              </dl>
                             </div>
-                          ) : <p className="text-sm text-gray-500">No students were marked present.</p>}
+                          )}
+                          <div>
+                            <p className="mb-2 text-sm font-medium text-gray-700">Checked-in Students</p>
+                            {session.checkins?.length ? (
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                                {session.checkins.map((checkin) => (
+                                  <div key={checkin._id} className="rounded bg-white px-3 py-2 text-sm"><p className="font-medium text-gray-900">{checkin.studentName}</p>{checkin.studentId && <p className="text-xs text-gray-400">Roll: {checkin.studentId}</p>}</div>
+                                ))}
+                              </div>
+                            ) : <p className="text-sm text-gray-500">No students were marked present.</p>}
+                          </div>
                         </div>
                       )}
                     </div>

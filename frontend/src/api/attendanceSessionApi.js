@@ -27,6 +27,9 @@ export const getSession = (id) =>
 export const closeSession = (id) =>
   api.put(`/attendance-sessions/${id}/close`);
 
+export const cancelSession = (id, reason) =>
+  api.put(`/attendance-sessions/${id}/cancel`, { reason });
+
 export const getCheckins = (id) =>
   api.get(`/attendance-sessions/${id}/checkins`);
 
