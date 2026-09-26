@@ -17,6 +17,12 @@ function generateSessionCode(length = 5) {
   return code;
 }
 
+// A session is cancelled when cancelledAt holds a real timestamp.
+// Cancellation is auditable and non-destructive: it is never a delete.
+// Defined before every use because it is shared across handlers.
+const isCancelledSession = (session) =>
+  session.cancelledAt !== null && session.cancelledAt !== undefined;
+
 // @desc    Create a new attendance session
 // @route   POST /api/attendance-sessions
 const createSession = async (req, res, next) => {
@@ -317,6 +323,9 @@ const getSessionByCode = async (req, res, next) => {
         subject: session.subject,
         sessionDate: session.sessionDate,
         isActive: session.isActive,
+        // Expose the boolean state only. The cancellation reason and actor
+        // are private audit metadata and are never returned on this public route.
+        isCancelled: isCancelledSession(session),
         checkinMode,
         checkinCount,
       },
@@ -326,17 +335,122 @@ const getSessionByCode = async (req, res, next) => {
   }
 };
 
+// @desc    Cancel a session without deleting it, its roster snapshot, or its checkins
+// @route   PUT /api/attendance-sessions/:id/cancel
+const cancelSession = async (req, res, next) => {
+  try {
+    // Read only to establish ownership (404) and to keep the reason-validation
+    // ordering. This document is intentionally NOT used to derive any written
+    // value: doing so would reintroduce a stale-value race.
+    const ownedSession = await AttendanceSession.findOne({
+      _id: req.params.id,
+      lecturerId: req.user._id,
+    });
+
+    if (!ownedSession) {
+      return res.status(404).json({ success: false, message: 'Session not found.' });
+    }
+
+    // --- Validate the cancellation reason (controlled 400, never a 500) ---
+    const { reason } = req.body || {};
+
+    if (typeof reason !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancellation reason must be a string.',
+      });
+    }
+
+    const normalizedReason = reason.trim();
+
+    if (normalizedReason.length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancellation reason must be at least 3 characters.',
+      });
+    }
+
+    if (normalizedReason.length > 300) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancellation reason must be 300 characters or fewer.',
+      });
+    }
+
+    const now = new Date();
+
+    // --- Single atomic conditional update ---
+    // The cancelledAt: null guard is what makes cancellation safe: MongoDB
+    // matches it atomically, so of two concurrent requests only one can match
+    // and write. The loser matches nothing and can never overwrite the
+    // winner's cancellation metadata.
+    const cancelledSession = await AttendanceSession.findOneAndUpdate(
+      { _id: req.params.id, lecturerId: req.user._id, cancelledAt: null },
+      [
+        {
+          $set: {
+            isActive: false,
+            cancelledAt: now,
+            cancelledBy: req.user._id,
+            cancellationReason: normalizedReason,
+            // $ifNull treats null and missing identically and is evaluated
+            // against the current stored document at write time, so an existing
+            // endTime is preserved and only a null/missing one is stamped.
+            endTime: { $ifNull: ['$endTime', now] },
+          },
+        },
+      ],
+      { new: true }
+    );
+
+    if (!cancelledSession) {
+      // Distinguish an already-cancelled session from a missing/non-owned one.
+      const existingSession = await AttendanceSession.findOne({
+        _id: req.params.id,
+        lecturerId: req.user._id,
+      });
+
+      if (existingSession) {
+        return res.status(409).json({
+          success: false,
+          message: 'Session is already cancelled.',
+        });
+      }
+
+      return res.status(404).json({ success: false, message: 'Session not found.' });
+    }
+
+    res.json({ success: true, message: 'Session cancelled.', data: cancelledSession });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Close a session
 // @route   PUT /api/attendance-sessions/:id/close
 const closeSession = async (req, res, next) => {
   try {
+    // Single atomic write. The cancelledAt: null guard keeps a cancelled
+    // session immutable; a miss is re-read below to distinguish 409 from 404.
     const session = await AttendanceSession.findOneAndUpdate(
-      { _id: req.params.id, lecturerId: req.user._id },
+      { _id: req.params.id, lecturerId: req.user._id, cancelledAt: null },
       { isActive: false, endTime: new Date() },
       { new: true }
     );
 
     if (!session) {
+      const existing = await AttendanceSession.findOne({
+        _id: req.params.id,
+        lecturerId: req.user._id,
+      });
+
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: 'Session is already cancelled.',
+        });
+      }
+
       return res.status(404).json({ success: false, message: 'Session not found.' });
     }
 
@@ -356,6 +470,15 @@ const studentCheckin = async (req, res, next) => {
 
     if (!session) {
       return res.status(404).json({ success: false, message: 'Session not found.' });
+    }
+
+    // Cancellation is audited separately from closure and is checked first,
+    // because cancelling also clears isActive.
+    if (isCancelledSession(session)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This session is cancelled. Attendance checkin is no longer accepted.',
+      });
     }
 
     if (!session.isActive) {
@@ -598,6 +721,15 @@ const saveAttendance = async (req, res, next) => {
 
     if (!session) {
       return res.status(404).json({ success: false, message: 'Session not found.' });
+    }
+
+    // Cancellation is audited separately from closure and is checked first,
+    // because cancelling also clears isActive.
+    if (isCancelledSession(session)) {
+      return res.status(409).json({
+        success: false,
+        message: 'Cannot modify attendance for a cancelled session.',
+      });
     }
 
     // Check if session is active
@@ -1220,8 +1352,11 @@ const getReports = async (req, res, next) => {
     const filter = getAuthorizedReportFilter(req, res);
     if (!filter) return;
 
+    // Cancelled sessions stay in the management audit view, so cancellation
+    // metadata is populated here. No cancellation filter is applied.
     const sessions = await AttendanceSession.find(filter)
       .populate('lecturerId', 'name email')
+      .populate('cancelledBy', 'name email')
       .sort({ sessionDate: -1 })
       .limit(200);
 
@@ -1236,6 +1371,7 @@ const getReports = async (req, res, next) => {
         obj.year = obj.year || 'Unspecified';
         obj.checkinCount = checkinCount;
         obj.checkins = checkins;
+        obj.isCancelled = isCancelledSession(session);
         return obj;
       })
     );
@@ -1257,8 +1393,29 @@ const getStudentReports = async (req, res, next) => {
       .populate('lecturerId', 'name email')
       .sort({ sessionDate: -1 })
       .lean();
-    const eligibleSessions = sessions.filter((session) => Array.isArray(session.rosterSnapshot));
-    const excludedLegacySessionCount = sessions.length - eligibleSessions.length;
+    // --- Classify every matched session exactly once ---
+    // Cancellation is evaluated FIRST so a cancelled legacy session is counted
+    // as cancelled, never as legacy. Only snapshot-backed, non-cancelled
+    // sessions contribute to eligibility, present/absent totals, percentages,
+    // and student histories.
+    const eligibleSessions = [];
+    let excludedCancelledSessionCount = 0;
+    let excludedLegacySessionCount = 0;
+
+    for (const session of sessions) {
+      if (isCancelledSession(session)) {
+        excludedCancelledSessionCount++;
+        continue;
+      }
+
+      if (Array.isArray(session.rosterSnapshot)) {
+        eligibleSessions.push(session);
+        continue;
+      }
+
+      excludedLegacySessionCount++;
+    }
+
     const sessionIds = eligibleSessions.map((session) => session._id);
     const checkins = sessionIds.length
       ? await StudentCheckin.find({ sessionId: { $in: sessionIds } }).select('sessionId studentRef').lean()
@@ -1343,6 +1500,7 @@ const getStudentReports = async (req, res, next) => {
       success: true,
       count: data.length,
       excludedLegacySessionCount,
+      excludedCancelledSessionCount,
       data,
     });
   } catch (error) {
@@ -1356,6 +1514,7 @@ module.exports = {
   getSession,
   getSessionByCode,
   closeSession,
+  cancelSession,
   saveAttendance,
   studentCheckin,
   getCheckins,

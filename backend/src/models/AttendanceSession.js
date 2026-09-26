@@ -86,6 +86,23 @@ const attendanceSessionSchema = new mongoose.Schema(
       type: [rosterSnapshotStudentSchema],
       default: undefined,
     },
+    // Auditable cancellation. A cancelled session is never deleted:
+    // the record, its roster snapshot, and its check-ins are all preserved.
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: null,
+    },
   },
   { timestamps: true }
 );

@@ -6,6 +6,7 @@ const {
   getSession,
   getSessionByCode,
   closeSession,
+  cancelSession,
   saveAttendance,
   studentCheckin,
   getCheckins,
@@ -29,6 +30,7 @@ router.get('/my', protect, getMySessions);
 router.get('/:id', protect, getSession);
 router.get('/:id/checkins', protect, getCheckins);
 router.put('/:id/close', protect, closeSession);
+router.put('/:id/cancel', protect, cancelSession);
 router.put('/:id/attendance', protect, saveAttendance);
 router.post('/:id/checkin', studentCheckin);
 
