@@ -1,6 +1,27 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 
+// Self-service profile editing is deliberately tiny: a user owns their own
+// display name and phone number and nothing else.
+const PROFILE_EDITABLE_FIELDS = ['name', 'phone'];
+const PROFILE_FIELD_LABELS = { name: 'Name', phone: 'Phone' };
+
+// Assignment and permission fields are administrator-owned. Their mere presence
+// in the body is a rejected request, so a crafted `branches: []` can never be
+// used to strip assignments.
+const ADMIN_ONLY_FIELDS = [
+  'branches',
+  'subjects',
+  'managedBranch',
+  'role',
+  'isActive',
+  'tokenVersion',
+  'email',
+];
+
+const ADMIN_ONLY_MESSAGE =
+  'Assignments and account permissions can only be changed by the System Administrator.';
+
 // @desc    Login user
 // @route   POST /api/auth/login
 const login = async (req, res, next) => {
@@ -74,17 +95,44 @@ const getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Update profile
+// @desc    Update own profile (name and phone only)
 // @route   PUT /api/auth/profile
 const updateProfile = async (req, res, next) => {
   try {
-    const allowedFields = ['name', 'phone', 'branches', 'subjects'];
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    // Reject administrator-owned fields before any write is attempted.
+    for (const field of ADMIN_ONLY_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        return res.status(403).json({
+          success: false,
+          message: ADMIN_ONLY_MESSAGE,
+        });
+      }
+    }
 
     const updates = {};
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
+
+    for (const field of PROFILE_EDITABLE_FIELDS) {
+      if (body[field] === undefined) continue;
+
+      if (typeof body[field] !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: `${PROFILE_FIELD_LABELS[field]} must be a string.`,
+        });
       }
+
+      updates[field] = body[field].trim();
+    }
+
+    // A name that normalizes to nothing would fail the schema required check
+    // with a confusing message, so it is rejected as a controlled 400 here.
+    if (updates.name !== undefined && !updates.name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required.',
+      });
     }
 
     const user = await User.findByIdAndUpdate(req.user._id, updates, {

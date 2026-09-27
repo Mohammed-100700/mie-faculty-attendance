@@ -2,7 +2,7 @@ const AttendanceSession = require('../models/AttendanceSession');
 const StudentCheckin = require('../models/StudentCheckin');
 const Student = require('../models/Student');
 const Workbook = require('../models/Workbook');
-const Branch = require('../models/Branch');
+const { assertAssignedBranch, assertAssignedSubject } = require('../utils/lecturerAssignmentScope');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 
@@ -35,11 +35,6 @@ const createSession = async (req, res, next) => {
 
     if (!branch) {
       return res.status(400).json({ success: false, message: 'Branch is required.' });
-    }
-
-    const branchExists = await Branch.findOne({ name: branch, isActive: true });
-    if (!branchExists) {
-      return res.status(400).json({ success: false, message: 'Valid active branch is required.' });
     }
 
     // --- Handle explicit workbookId / sheetIndex safely ---
@@ -154,6 +149,16 @@ const createSession = async (req, res, next) => {
     // --- Build rosterSnapshot from selected sheet, BEFORE session creation ---
     // This is computed once and reused; never re-queried from workbook later.
     const selectedSheet = workbook.sheets[resolvedSheetIndex];
+
+    // --- Assignment enforcement ---
+    // The selected workbook sheet is authoritative for branch and subject, not
+    // the request body, so a crafted payload cannot substitute another branch or
+    // subject. Both checks run before any session data is derived. A branch or
+    // subject that was removed from the lecturer, or whose Branch/Subject record
+    // is inactive, raises a controlled 403 and creates nothing.
+    await assertAssignedBranch(req, selectedSheet.branch);
+    await assertAssignedSubject(req, selectedSheet.subject);
+
     const year = String(selectedSheet.year || '').trim();
 
     if (!year) {

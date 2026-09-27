@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Workbook = require('../models/Workbook');
 const Student = require('../models/Student');
+const { assertAssignedBranch, assertAssignedSubject } = require('../utils/lecturerAssignmentScope');
 
 // Sanitize helper — strip HTML tags and limit length
 function sanitize(str, maxLen = 200) {
@@ -46,31 +47,50 @@ const addSheet = async (req, res, next) => {
     const cleanBatch = sanitize(batch, 50);
     const cleanBranch = sanitize(branch, 50);
     const cleanSubject = sanitize(subject, 100);
-    const cleanYear = year ? sanitize(String(year), 4) : String(new Date().getFullYear());
 
     if (!cleanBatch || !cleanBranch || !cleanSubject) {
       return res.status(400).json({ success: false, message: 'Invalid batch, branch, or subject.' });
     }
+
+    // Year is optional and must normalize to a 4-digit value; an absent year
+    // still defaults to the current calendar year.
+    const suppliedYear = year === undefined || year === null ? '' : sanitize(String(year), 20);
+    let cleanYear;
+    if (!suppliedYear) {
+      cleanYear = String(new Date().getFullYear());
+    } else if (/^\d{4}$/.test(suppliedYear)) {
+      cleanYear = suppliedYear;
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid academic year.' });
+    }
+
+    // The lecturer must still be assigned to this branch and subject. This runs
+    // before the workbook is loaded and mutated, so a rejected request changes
+    // nothing. Both helpers throw a controlled 403 when an assignment is missing
+    // or the underlying Branch/Subject record is inactive.
+    const assignedBranch = await assertAssignedBranch(req, cleanBranch);
+    const assignedSubject = await assertAssignedSubject(req, cleanSubject);
 
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
     if (!workbook) {
       return res.status(404).json({ success: false, message: 'Workbook not found.' });
     }
 
-    // Check for duplicate (same year + batch + branch + subject)
+    // Check for duplicate (same year + batch + branch + subject) using the
+    // normalized, database-confirmed values
     const exists = workbook.sheets.find(
-      (s) => s.year === cleanYear && s.batch === cleanBatch && s.branch === cleanBranch && s.subject === cleanSubject
+      (s) => s.year === cleanYear && s.batch === cleanBatch && s.branch === assignedBranch.name && s.subject === assignedSubject.name
     );
     if (exists) {
       return res.status(400).json({ success: false, message: 'This sheet already exists.' });
     }
 
     workbook.sheets.push({
-      name: `${cleanYear} / ${cleanBatch} / ${cleanBranch} / ${cleanSubject}`,
+      name: `${cleanYear} / ${cleanBatch} / ${assignedBranch.name} / ${assignedSubject.name}`,
       year: cleanYear,
-      batch,
-      branch,
-      subject,
+      batch: cleanBatch,
+      branch: assignedBranch.name,
+      subject: assignedSubject.name,
       tests: [],
       students: [],
     });
