@@ -16,6 +16,105 @@ function throwStatus(message, statusCode) {
   throw error;
 }
 
+// === WORKBOOK MUTATION INPUT CONTRACT ===
+//
+// Every mutation below addresses a record positionally, so a malformed index is
+// not cosmetic: Number('foo') is NaN, Number('') is 0, and Number('-1') is -1.
+// Unvalidated values reached splice() and mark lookup before, where a blank or
+// out-of-range index silently removed the wrong entry or produced a 500. One
+// parser now guards every position, and it is the only way this module turns a
+// route parameter into an array offset.
+
+const INVALID_INDEX_MESSAGES = {
+  sheet: 'Invalid sheet index.',
+  test: 'Invalid test index.',
+  student: 'Invalid student index.',
+  column: 'Invalid column index.',
+};
+
+// Canonical decimal form: a single leading 0 or a digit string that does not
+// start with 0. Signs, spaces, decimals, exponent notation, and trailing text
+// fail this test, so they can never be partially parsed into a usable index.
+const CANONICAL_INDEX_PATTERN = /^(0|[1-9][0-9]*)$/;
+
+const DEFAULT_MAX_MARKS = 100;
+const MIN_MAX_MARKS = 1;
+const MAX_MAX_MARKS = 1000;
+const MAX_MARKS_MESSAGE = `Max marks must be a whole number between ${MIN_MAX_MARKS} and ${MAX_MAX_MARKS}.`;
+const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// Parse one positional index. Strings arrive from route params, so a canonical
+// digit string is required; numbers are accepted only when they are already
+// exact non-negative integers. `0` is a valid index and is preserved. Anything
+// else — blank, padded, negative, decimal, exponential, signed, non-finite,
+// array, object, boolean, null, undefined — is a controlled 400.
+function parseIndex(value, kind) {
+  const message = INVALID_INDEX_MESSAGES[kind] || 'Invalid index.';
+
+  if (typeof value === 'number') {
+    if (Number.isSafeInteger(value) && value >= 0) return value;
+    throwStatus(message, 400);
+  }
+
+  if (typeof value === 'string' && CANONICAL_INDEX_PATTERN.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+
+  throwStatus(message, 400);
+}
+
+// Convert a YYYY-MM-DD string to a Date at UTC midnight, or return null when it
+// is not a real calendar date. The format test rejects ambiguous input such as
+// 03/01/2026, and the round-trip test rejects dates that only look plausible:
+// the Date parser silently rolls 2026-02-30 over into March, so the components
+// are compared against the supplied year, month, and day.
+function parseCalendarDate(value) {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  const match = CALENDAR_DATE_PATTERN.exec(trimmed);
+  if (!match) return null;
+
+  const date = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  if (date.getUTCFullYear() !== Number(match[1])) return null;
+  if (date.getUTCMonth() + 1 !== Number(match[2])) return null;
+  if (date.getUTCDate() !== Number(match[3])) return null;
+
+  return date;
+}
+
+// Resolve the owned workbook and the addressed sheet, then confirm the lecturer
+// still holds that sheet's branch and subject assignment. Read paths do not use
+// this: historical sheets stay readable, but no mutation reaches an existing
+// sheet until the C20E helpers confirm the assignment is current and active.
+// Both helpers throw the controlled 403, and this runs before any mutation, so a
+// rejected request changes neither the workbook nor the canonical Student.
+async function resolveMutableSheet(req, sheetIndex) {
+  const workbook = await Workbook.findOne({ lecturerId: req.user._id });
+  if (!workbook) throwStatus('Workbook not found.', 404);
+
+  const sheet = workbook.sheets[sheetIndex];
+  if (!sheet) throwStatus('Sheet not found.', 404);
+
+  await assertAssignedBranch(req, sheet.branch);
+  await assertAssignedSubject(req, sheet.subject);
+
+  return { workbook, sheet };
+}
+
+// Best-effort cleanup for a Student identity this request created. Failures are
+// swallowed so the real error is never masked by a cleanup problem.
+async function discardCreatedStudent(createdNewStudent, student) {
+  if (!createdNewStudent || !student || !student._id) return;
+  try {
+    await Student.deleteOne({ _id: student._id });
+  } catch (_) {
+    // Best-effort cleanup; do not hide the original workbook error
+  }
+}
+
 // @desc    Get workbook
 // @route   GET /api/workbook
 const getWorkbook = async (req, res, next) => {
@@ -106,10 +205,10 @@ const addSheet = async (req, res, next) => {
 // @route   DELETE /api/workbook/sheets/:sheetIndex
 const deleteSheet = async (req, res, next) => {
   try {
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const { workbook } = await resolveMutableSheet(req, sheetIndex);
 
-    workbook.sheets.splice(req.params.sheetIndex, 1);
+    workbook.sheets.splice(sheetIndex, 1);
     await workbook.save();
     res.json({ success: true, data: workbook });
   } catch (error) {
@@ -121,31 +220,67 @@ const deleteSheet = async (req, res, next) => {
 // @route   POST /api/workbook/sheets/:sheetIndex/tests
 const addTest = async (req, res, next) => {
   try {
-    const { sheetIndex } = req.params;
-    const { testName } = req.body;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const {
+      testName,
+      maxMarks: rawMaxMarks,
+      assessmentDate: rawAssessmentDate,
+    } = req.body || {};
 
-    const sheet = workbook.sheets[sheetIndex];
-    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
-
+    // A supplied test name must be a string that still has content after
+    // sanitization, so markup-only or non-string input is treated as missing.
+    if (typeof testName !== 'string') {
+      return res.status(400).json({ success: false, message: 'Test name is required.' });
+    }
     const cleanName = sanitize(testName, 100);
     if (!cleanName) {
       return res.status(400).json({ success: false, message: 'Test name is required.' });
     }
-    let maxMarks = req.body.maxMarks ? parseInt(req.body.maxMarks) : 100;
-    if (isNaN(maxMarks) || maxMarks < 1 || maxMarks > 1000) maxMarks = 100;
 
-    // Validate assessmentDate — required for new assessments
-    let assessmentDate = null;
-    if (!req.body.assessmentDate) {
+    // maxMarks is optional. Only an absent or blank value keeps the historical
+    // default; anything else must be a whole number inside the supported range.
+    // Number() is used instead of parseInt so '50abc' is rejected rather than
+    // silently stored as 50, and an out-of-range value is reported instead of
+    // being quietly replaced with the default.
+    let maxMarks = DEFAULT_MAX_MARKS;
+    const maxMarksIsBlankString =
+      typeof rawMaxMarks === 'string' && rawMaxMarks.trim() === '';
+    const maxMarksIsAbsent = rawMaxMarks === undefined || rawMaxMarks === null;
+
+    if (!maxMarksIsAbsent && !maxMarksIsBlankString) {
+      // Arrays and objects must not become valid through String() coercion
+      // (for example [50] -> '50' and [] -> '').
+      if (typeof rawMaxMarks !== 'string' && typeof rawMaxMarks !== 'number') {
+        return res.status(400).json({ success: false, message: MAX_MARKS_MESSAGE });
+      }
+
+      const parsedMaxMarks =
+        typeof rawMaxMarks === 'number' ? rawMaxMarks : Number(rawMaxMarks.trim());
+      if (
+        !Number.isInteger(parsedMaxMarks) ||
+        parsedMaxMarks < MIN_MAX_MARKS ||
+        parsedMaxMarks > MAX_MAX_MARKS
+      ) {
+        return res.status(400).json({ success: false, message: MAX_MARKS_MESSAGE });
+      }
+      maxMarks = parsedMaxMarks;
+    }
+
+    // The assessment date is required and must be a real calendar date. A
+    // missing value and an unparsable value keep their distinct messages.
+    if (
+      rawAssessmentDate === undefined ||
+      rawAssessmentDate === null ||
+      String(rawAssessmentDate).trim() === ''
+    ) {
       return res.status(400).json({ success: false, message: 'Assessment date is required.' });
     }
-    const parsedDate = new Date(req.body.assessmentDate);
-    if (isNaN(parsedDate)) {
+    const assessmentDate = parseCalendarDate(rawAssessmentDate);
+    if (!assessmentDate) {
       return res.status(400).json({ success: false, message: 'Invalid assessment date.' });
     }
-    assessmentDate = parsedDate;
+
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
     const colIndex = sheet.tests.length + 1;
     sheet.tests.push({ name: cleanName, colIndex, maxMarks, approved: false, approvedAt: null, assessmentDate });
@@ -164,12 +299,17 @@ const addTest = async (req, res, next) => {
 // @route   DELETE /api/workbook/sheets/:sheetIndex/tests/:testIndex
 const deleteTest = async (req, res, next) => {
   try {
-    const { sheetIndex, testIndex } = req.params;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const testIndex = parseIndex(req.params.testIndex, 'test');
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
-    const sheet = workbook.sheets[sheetIndex];
-    const deletedColIndex = sheet.tests[testIndex].colIndex;
+    // Resolve the test before touching it: the deleted column index and the
+    // recalculated column indexes must come from the test that is actually
+    // being removed.
+    const test = sheet.tests[testIndex];
+    if (!test) throwStatus('Test not found.', 404);
+
+    const deletedColIndex = test.colIndex;
     sheet.tests.splice(testIndex, 1);
     // Recalculate colIndexes
     sheet.tests.forEach((t, i) => { t.colIndex = i + 1; });
@@ -191,13 +331,23 @@ const deleteTest = async (req, res, next) => {
 // @route   POST /api/workbook/sheets/:sheetIndex/students
 const addStudent = async (req, res, next) => {
   try {
-    const { sheetIndex } = req.params;
-    const { name, ncukId, mieStudentId } = req.body;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const { name, ncukId, mieStudentId } = req.body || {};
 
-    const sheet = workbook.sheets[sheetIndex];
-    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
+    // Every identity field is optional, but a supplied value must be a string.
+    // This stops an array or object from being stringified into a lookup key or
+    // from reaching a stored field through String() coercion.
+    for (const [field, value] of [
+      ['name', name],
+      ['ncukId', ncukId],
+      ['mieStudentId', mieStudentId],
+    ]) {
+      if (value !== undefined && value !== null && typeof value !== 'string') {
+        return res.status(400).json({ success: false, message: `Invalid ${field}: must be a string.` });
+      }
+    }
+
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
     // === IDENTITY RESOLUTION ===
     let resolvedStudent = null;
@@ -284,6 +434,22 @@ const addStudent = async (req, res, next) => {
       resolvedStudent = created;
     }
 
+    // A canonical identity that is already linked to this sheet is rejected
+    // before the row is appended, so a sheet never lists the same student twice.
+    // The comparison is on the stored studentRef, which also means a legacy row
+    // without a reference can never match. Only an identity that already existed
+    // can match, so the rejection creates nothing; a created identity is cleaned
+    // up defensively before the 409 is reported.
+    if (
+      resolvedStudent._id &&
+      sheet.students.some(
+        (row) => row.studentRef && String(row.studentRef) === String(resolvedStudent._id)
+      )
+    ) {
+      await discardCreatedStudent(createdNewStudent, resolvedStudent);
+      throwStatus('Student already exists in this sheet.', 409);
+    }
+
     // Build workbook student object from resolved Student
     const cleanNcukId = resolvedStudent.ncukId || '';
     const marks = sheet.tests.map((t, i) => ({ colIndex: i + 1, value: '' }));
@@ -302,13 +468,7 @@ const addStudent = async (req, res, next) => {
       await workbook.save();
     } catch (workbookErr) {
       // If we created a new Student identity in this request, clean it up
-      if (createdNewStudent && resolvedStudent && resolvedStudent._id) {
-        try {
-          await Student.deleteOne({ _id: resolvedStudent._id });
-        } catch (_) {
-          // Best-effort cleanup; do not hide the original workbook error
-        }
-      }
+      await discardCreatedStudent(createdNewStudent, resolvedStudent);
       return next(workbookErr);
     }
 
@@ -323,21 +483,14 @@ const addStudent = async (req, res, next) => {
 const updateStudentNcukId = async (req, res, next) => {
   let dbSession;
   try {
-    // 1. ROUTE PARAMETER PARSING — convert strings from req.params
-    let sheetIndex = Number(req.params.sheetIndex);
-    let studentIndex = Number(req.params.studentIndex);
-
-    if (
-      !Number.isInteger(sheetIndex) ||
-      sheetIndex < 0 ||
-      !Number.isInteger(studentIndex) ||
-      studentIndex < 0
-    ) {
-      throwStatus('Invalid sheet or student index.', 400);
-    }
+    // 1. ROUTE PARAMETER PARSING — one shared parser for every positional index,
+    // so a malformed value can never become an array offset, a splice() target,
+    // or a subdocument lookup. `0` stays valid.
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const studentIndex = parseIndex(req.params.studentIndex, 'student');
 
     // 2. INPUT NORMALIZATION
-    let { ncukId } = req.body;
+    let { ncukId } = req.body || {};
     if (ncukId == null || typeof ncukId !== 'string') {
       throwStatus('Invalid NCUK ID: must be a string.', 400);
     }
@@ -345,12 +498,9 @@ const updateStudentNcukId = async (req, res, next) => {
     const isEmpty = ncukId === '';
 
     // 3. LOAD OWNED WORKBOOK — Mongoose document (no .lean()), so .save() works
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) throwStatus('Not found.', 404);
-
-    // 4. VALIDATE SHEET AND STUDENT INDEXES
-    const sheet = workbook.sheets[sheetIndex];
-    if (!sheet) throwStatus('Sheet not found.', 404);
+    // 4. VALIDATE AND AUTHORIZE THE INITIAL SHEET before any transaction starts,
+    // so a rejected request never opens a session or writes a canonical Student.
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
     const studentRow = sheet.students[studentIndex];
     if (!studentRow) throwStatus('Student not found.', 404);
@@ -369,8 +519,11 @@ const updateStudentNcukId = async (req, res, next) => {
     await dbSession.withTransaction(async () => {
       // Re-fetch owned workbook using .session(dbSession)
       const tWorkbook = await Workbook.findOne({ lecturerId: req.user._id }).session(dbSession);
-      if (!tWorkbook) throwStatus('Not found.', 404);
+      if (!tWorkbook) throwStatus('Workbook not found.', 404);
 
+      // Re-resolve the sheet and the row from the re-fetched document, so a
+      // concurrent change inside the transaction cannot address a different
+      // record than the one that was authorized above.
       const tSheet = tWorkbook.sheets[sheetIndex];
       if (!tSheet) throwStatus('Sheet not found.', 404);
 
@@ -436,11 +589,16 @@ const updateStudentNcukId = async (req, res, next) => {
 // @route   DELETE /api/workbook/sheets/:sheetIndex/students/:studentIndex
 const deleteStudent = async (req, res, next) => {
   try {
-    const { sheetIndex, studentIndex } = req.params;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const studentIndex = parseIndex(req.params.studentIndex, 'student');
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
-    const sheet = workbook.sheets[sheetIndex];
+    const student = sheet.students[studentIndex];
+    if (!student) throwStatus('Student not found.', 404);
+
+    // Only the workbook row is removed. The canonical Student document is a
+    // shared identity that may be linked from other sheets, so it is never
+    // deleted here.
     sheet.students.splice(studentIndex, 1);
     await workbook.save();
     res.json({ success: true, data: workbook });
@@ -453,17 +611,33 @@ const deleteStudent = async (req, res, next) => {
 // @route   PUT /api/workbook/sheets/:sheetIndex/students/:studentIndex/marks/:colIndex
 const updateMark = async (req, res, next) => {
   try {
-    const { sheetIndex, studentIndex, colIndex } = req.params;
-    const { value } = req.body;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const studentIndex = parseIndex(req.params.studentIndex, 'student');
+    const colIndex = parseIndex(req.params.colIndex, 'column');
 
-    const sheet = workbook.sheets[sheetIndex];
-    if (!sheet) return res.status(404).json({ success: false, message: 'Sheet not found.' });
+    // Mark columns are 1-based, because a column is always written as its
+    // position plus one. A column of 0 can therefore never name a mark entry and
+    // is reported as malformed instead of as a missing mark.
+    if (colIndex < 1) throwStatus(INVALID_INDEX_MESSAGES.column, 400);
+
+    // A mark value is stored as text, so a non-string body is rejected rather
+    // than coerced. A blank string is a legitimate "cleared" mark.
+    const { value } = req.body || {};
+    if (typeof value !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid mark value: must be a string.' });
+    }
+
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
+
     const student = sheet.students[studentIndex];
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found.' });
-    const mark = student.marks.find((m) => m.colIndex === parseInt(colIndex));
-    if (mark) mark.value = sanitize(value, 20);
+    if (!student) throwStatus('Student not found.', 404);
+
+    // The mark must already exist. A missing column was previously reported as a
+    // successful no-op, which hid real data loss from the client.
+    const mark = student.marks.find((m) => m.colIndex === colIndex);
+    if (!mark) throwStatus('Mark not found.', 404);
+
+    mark.value = sanitize(value, 20);
 
     await workbook.save();
     res.json({ success: true, data: workbook });
@@ -476,12 +650,12 @@ const updateMark = async (req, res, next) => {
 // @route   PUT /api/workbook/sheets/:sheetIndex/tests/:testIndex/toggle
 const toggleTestApproval = async (req, res, next) => {
   try {
-    const { sheetIndex, testIndex } = req.params;
-    const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    const sheetIndex = parseIndex(req.params.sheetIndex, 'sheet');
+    const testIndex = parseIndex(req.params.testIndex, 'test');
+    const { workbook, sheet } = await resolveMutableSheet(req, sheetIndex);
 
-    const sheet = workbook.sheets[sheetIndex];
     const test = sheet.tests[testIndex];
+    if (!test) throwStatus('Test not found.', 404);
 
     test.approved = !test.approved;
     test.approvedAt = test.approved ? new Date() : null;
@@ -498,10 +672,31 @@ const toggleTestApproval = async (req, res, next) => {
 const syncMarks = async (req, res, next) => {
   try {
     const workbook = await Workbook.findOne({ lecturerId: req.user._id });
-    if (!workbook) return res.status(404).json({ success: false, message: 'Not found.' });
+    if (!workbook) throwStatus('Workbook not found.', 404);
+
+    // Authorization is decided for every sheet before any of them is touched.
+    // Deciding sheet by sheet would let an allowed sheet be mutated before a
+    // later sheet was found to be out of scope, so the two passes are separate:
+    // a historical sheet the lecturer is no longer assigned to is skipped
+    // instead of failing the sync or being written to.
+    const mutableSheets = [];
+    let skippedSheetCount = 0;
+    for (const sheet of workbook.sheets) {
+      try {
+        await assertAssignedBranch(req, sheet.branch);
+        await assertAssignedSubject(req, sheet.subject);
+        mutableSheets.push(sheet);
+      } catch (error) {
+        if (error.statusCode === 403) {
+          skippedSheetCount++;
+          continue;
+        }
+        throw error;
+      }
+    }
 
     let fixed = 0;
-    for (const sheet of workbook.sheets) {
+    for (const sheet of mutableSheets) {
       const testColIndexes = sheet.tests.map((t) => t.colIndex);
       for (const student of sheet.students) {
         const existingColIndexes = student.marks.map((m) => m.colIndex);
@@ -516,7 +711,12 @@ const syncMarks = async (req, res, next) => {
     }
 
     await workbook.save();
-    res.json({ success: true, message: `Synced ${fixed} missing mark entries.`, data: workbook });
+    res.json({
+      success: true,
+      message: `Synced ${fixed} missing mark entries.`,
+      skippedSheetCount,
+      data: workbook,
+    });
   } catch (error) {
     next(error);
   }

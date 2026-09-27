@@ -1,57 +1,58 @@
-# Checkpoint C20E: Lecturer Assignment Enforcement
+# Checkpoint C20F: Workbook Mutation Integrity
 
 Status: READY
 
 ## Objective
 
-Lecturer branch and subject assignments become administrator-only and are enforced server-side when academic records are created.
+Malformed workbook mutation requests can no longer delete or change the wrong sheet, test, student, or mark, and every workbook mutation requires the lecturer's current branch and subject assignments.
 
 ## Allowed files
 
 - `docs/agent/NEXT.md`
-- `backend/src/controllers/authController.js`
-- `backend/src/controllers/classLogController.js`
 - `backend/src/controllers/workbookController.js`
-- `backend/src/controllers/attendanceSessionController.js`
-- `backend/src/utils/lecturerAssignmentScope.js` (new)
-- `frontend/src/pages/Profile.jsx`
 
 Do not edit other files. If another file is required, stop and explain why.
 
 ## Required behavior
 
-- `PUT /api/auth/profile` may update only `name` and `phone`. A body containing `branches`, `subjects`, `managedBranch`, `role`, `isActive`, `tokenVersion`, or `email` is rejected with 403 `Assignments and account permissions can only be changed by the System Administrator.` Supplied `name`/`phone` must be strings, a blank normalized name is rejected with 400, and the existing `User.SAFE_FIELDS` response projection is preserved.
-- `Profile.jsx` submits only `{ name, phone }`, removes branch/subject checkboxes, no longer calls the branches or subjects APIs, shows current assignments read-only (Lecturer branches and populated subject names, Academic Manager managed branch, other roles role/account only), and shows `Assignments are managed by the System Administrator.` while preserving refresh, editing, success/error states, and responsive layout.
-- `backend/src/utils/lecturerAssignmentScope.js` normalizes user branch values safely, requires an exact match against `req.user.branches`, requires the branch to exist and be active in the `Branch` collection, requires the subject to be an active `Subject` whose `_id` is present in `req.user.subjects`, trusts only database-backed records, and throws controlled 403 errors `You are not assigned to this branch.` / `You are not assigned to this subject.`. Empty, malformed, missing, and populated/unpopulated assignment values are handled without throwing unhandled errors, and no dependency is added.
-- `POST /api/class-logs` and `PUT /api/class-logs/:id` validate supplied entries: non-empty array, every entry a string branch assigned to the lecturer, no duplicate branches, `classes` an integer 1–20, malformed payloads rejected with controlled 400, unassigned or inactive branches rejected with the helper's controlled 403, and `totalClasses` summed only from validated integers. Lecturer ownership and the approval-reset behavior are preserved, and updating only date or remarks does not revalidate unchanged historical entries.
-- `POST /api/workbook/sheets` validates and normalizes batch, branch, subject, and year before any mutation, requires current assignment to the active branch and active subject, stores the normalized values in `name`, `year`, `batch`, `branch`, and `subject`, and preserves duplicate-sheet detection and the response shape.
-- `POST /api/attendance-sessions` verifies after the owned workbook and selected sheet are resolved that the lecturer is currently assigned to the selected sheet's branch and subject, returns controlled 403 for removed or unassigned branch or subject, and preserves roster snapshot, year, session code, ownership, index-0, legacy compatibility, and cancellation behavior.
-- Existing workbook sheets, class logs, attendance sessions, and the Super Admin assignment workflow remain readable and unchanged; no model, route, middleware, admin UI, or admin-controller change is made; no migration runs and no existing record is rewritten.
+- One reusable index parser in `workbookController.js` accepts only canonical non-negative decimal integers (`0`, `1`, `2`, …) supplied as a route string or an exact integer number, preserves index `0`, and rejects blank values, whitespace padding, leading zeros, signs, negatives, decimals, exponent notation, trailing text, arrays, objects, booleans, and non-safe integers. Failures raise controlled 400 errors with exactly `Invalid sheet index.`, `Invalid test index.`, `Invalid student index.`, or `Invalid column index.` No unvalidated route parameter is passed to array indexing, `splice()`, mark lookup, or Mongoose subdocument access.
+- Existence checks are controlled: missing workbook `404 Workbook not found.`, missing sheet `404 Sheet not found.`, missing test `404 Test not found.`, missing student `404 Student not found.`, missing mark `404 Mark not found.`. No invalid index may delete index `0`, delete the last array item, mutate a different entry, produce a 500, or return success without performing the requested mutation.
+- Before mutating an existing sheet, `deleteSheet`, `addTest`, `deleteTest`, `addStudent`, `updateStudentNcukId`, `deleteStudent`, `updateMark`, and `toggleTestApproval` call the C20E helpers `assertAssignedBranch(req, sheet.branch)` and `assertAssignedSubject(req, sheet.subject)`. A removed, unassigned, or inactive branch/subject returns the existing controlled 403 and leaves the workbook and the canonical `Student` unchanged. `getWorkbook` and `getAllWorkbooks` are unchanged so historical sheets stay readable.
+- `updateStudentNcukId` uses the shared parsed indexes, validates and authorizes the sheet before opening its transaction, rechecks sheet and student existence after re-fetching inside the transaction, never uses the raw route values, and preserves canonical `Student` synchronization, legacy-row behavior, duplicate preflight, MongoDB 11000 to 409 conversion, transaction rollback, and session cleanup.
+- `syncMarks` authorizes every sheet first, then mutates, so no partial mutation happens before an authorization decision. Sheets whose branch or subject is no longer assigned or active are skipped instead of failing the sync; the response keeps the existing `Synced N missing mark entries.` message and workbook data, adds `skippedSheetCount`, and preserves mark ordering.
+- `addTest` requires `testName` to be a string that is still non-empty after sanitization, requires `maxMarks` to normalize to an integer from 1 through 1000 with a controlled 400 instead of silently falling back to 100, keeps 100 only when `maxMarks` is absent or blank, and requires `assessmentDate` to be a real `YYYY-MM-DD` calendar date so impossible values such as `2026-02-30` are rejected. `deleteTest` and `toggleTestApproval` require valid indexes and existing records before mutating.
+- `addStudent` requires `name`, `ncukId`, and `mieStudentId` to be strings when supplied, preserves the three identity-resolution paths, canonical `Student` creation, collision retry, and best-effort rollback, and rejects a canonical student already present in the same sheet with `409 Student already exists in this sheet.` before the row is pushed, without creating or deleting a canonical `Student`. `deleteStudent` validates both indexes and existence before `splice` and deletes only the workbook row.
+- `updateMark` validates `sheetIndex`, `studentIndex`, and `colIndex`, requires `colIndex` to be a positive integer that matches an existing mark entry, requires `value` to be a string, preserves blank marks and sanitization, and returns the controlled 404 for a missing mark instead of a successful no-op.
+- Compatibility is preserved: lecturer workbook ownership, C20E assignment helpers and messages, index `0` behavior, NCUK canonical transaction behavior, workbook response shapes except the added `syncMarks.skippedSheetCount`, existing frontend API contracts, report and attendance behavior, and existing historical records.
 
 ## Out of scope
 
-- Model, route, middleware, admin UI, and admin-controller changes.
+- Route, model, middleware, frontend, and dependency changes.
+- `getWorkbook` and `getAllWorkbooks` read paths and historical sheet visibility.
 - Database migrations, seeding, or any rewrite of existing records.
-- Authorization changes to attendance reports, class-log approval, or other workbook sheet mutations.
+- Tests that require Atlas during the OpenCode pass.
 - Runtime, Atlas, concurrency, and browser verification.
 
 ## Acceptance checks
 
-- `PUT /api/auth/profile` with `{ name, phone, branches: [] }` returns 403 and leaves assignments unchanged; a body with only `name`/`phone` updates just those fields.
-- `POST /api/class-logs` with a non-array, empty, duplicated-branch, non-integer, or out-of-range `classes` value returns controlled 400; an assigned-and-active branch succeeds; an unassigned or inactive branch returns 403.
-- `POST /api/workbook/sheets` stores sanitized values, rejects unassigned branch or subject with 403, and still reports `This sheet already exists.` for duplicates.
-- `POST /api/attendance-sessions` with a crafted `workbookId`/`sheetIndex` for a sheet whose branch or subject is no longer assigned returns controlled 403 and creates no session.
-- `Profile.jsx` renders read-only assignments, submits only `{ name, phone }`, and issues no branches or subjects request.
-- `node --check` passes for every changed backend file, `cd frontend && npm run build` passes, and `node scripts/harness/verify-static.mjs` passes.
+- `DELETE /api/workbook/sheets/foo`, `/sheets/-1`, and `/sheets/1.5` return 400 and delete no sheet.
+- A valid index `0` mutation targets only sheet `0`.
+- Invalid test or student indexes return controlled 400 or 404 and mutate nothing.
+- `updateMark` with `colIndex=1abc` returns 400; a valid but missing column returns 404.
+- A duplicate canonical student in one sheet returns 409 with no extra workbook row and no `Student` document.
+- An inactive or unassigned sheet cannot be mutated by any workbook mutation route.
+- `syncMarks` skips unassigned sheets and reports `skippedSheetCount`.
+- `addTest` rejects an invalid `maxMarks` and an impossible `assessmentDate`.
+- `updateStudentNcukId` transaction, legacy-row, and duplicate behavior is unchanged.
 
 ## Verification
 
-- `node --check` on each changed backend JavaScript file.
+- `node --check backend/src/controllers/workbookController.js`.
 - `cd frontend && npm run build`.
 - `node scripts/harness/verify-static.mjs`.
 - `git diff --check` and `git status --short`.
-- Full diff review of every allowed file.
-- Codex performs the runtime and browser verification; this checkpoint stops after static verification.
+- Full review of the actual diff for both allowed files.
+- Codex performs the temporary-database and browser verification; this checkpoint stops after static verification.
 
 ## Delivery constraints
 
