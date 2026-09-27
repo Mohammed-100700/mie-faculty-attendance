@@ -2,7 +2,7 @@
 
 Updated: 2026-09-27
 Branch: `feature/student-attendance-v2`
-Latest completed work: C19 auditable attendance session cancellation (`a4a0f72`, `b5eb2d0`)
+Latest completed work: C20F workbook mutation integrity (`3b2258d`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -17,6 +17,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Starting attendance uses a lecturer-owned workbook sheet and preserves its original `sheetIndex`, including index `0`.
 - New attendance sessions snapshot the selected sheet's normalized academic year. Existing sessions without a year remain readable as `Unspecified`.
 - Workbook NCUK ID updates synchronize to the canonical linked Student inside a transaction. Legacy rows without `studentRef` remain workbook-only.
+- Every workbook mutation parses its sheet, test, student, and column indexes through one canonical non-negative integer parser and validates the target record before mutating. Malformed indexes are controlled 400s and never delete or change another record.
+- Every workbook mutation of an existing sheet requires the lecturer's current, active branch and subject assignment. `getWorkbook` and `getAllWorkbooks` are unchanged, so historical sheets stay readable.
 - The lecturer attendance workspace lists Active, Closed, and Cancelled sessions independently from workbook loading. Resume and Review use the existing session check-in route.
 - Executive Office attendance reports may span all branches. Academic Manager attendance reports are enforced server-side to `req.user.managedBranch`; cross-branch requests are rejected.
 - The attendance report page is restricted to Executive Office and Academic Manager roles. Academic Managers receive fixed branch context without an all-branches control.
@@ -27,6 +29,12 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Active, closed, snapshot-backed, pre-C10, and legacy sessions may be cancelled by their owning lecturer. Cancelled sessions cannot be closed, edited, or checked into.
 - Management session reports retain cancelled sessions for audit. Student attendance denominators, histories, totals, and exports exclude them and disclose `excludedCancelledSessionCount`.
 - The public session-code response exposes only `isCancelled`; cancellation reasons and actors remain protected.
+- Workbook assignment values are administrator-owned. Lecturers cannot edit their own branch or subject assignments, and academic records are authorized against the database rather than a client value.
+- Workbook mutation is validated positionally and authorized against current assignments. A malformed index is a controlled 400; an unassigned or inactive sheet is a controlled 403; missing records are controlled 404s.
+- Class-log creation and update store an accepted calendar day at UTC midnight from an exact `YYYY-MM-DD` value. Impossible days are rejected instead of rolling over.
+- Class-log month/year filters use UTC calendar boundaries; a year-only request selects that full year, while a month requires a year.
+- Academic Manager class-log approval is branch-scoped. Responses contain only the manager's own entry, with `totalClasses` and `approvalStatus` recomputed for that entry, and the stored `ClassLog` is never shaped in place.
+- Class-log decisions are single-document atomic updates guarded by a `Pending` entry for the manager's branch, and they recalculate the stored top-level `approvalStatus` in the same operation. Only a `Pending` entry can be decided, and a re-review is a controlled 409.
 
 ## Completed checkpoints
 
@@ -43,7 +51,12 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C18: marks-style management attendance review and class/student PDF exports — `f263a79`
 - C19A: auditable attendance session cancellation backend — `a4a0f72`
 - C19B: lecturer and management cancellation UI — `b5eb2d0`
+- C20B: authentication and password reset hardening — `e5689b3`
+- C20C: role access enforcement and seed route removal — `b073fb9`
+- C20D: legacy QR and marks integration retirement — `5b82609`
+- C20E: lecturer assignment enforcement — `6b36c37`
+- C20F: workbook mutation integrity — `3b2258d`
 
 ## Current task
 
-No product checkpoint is active. `docs/agent/NEXT.md` is `EMPTY`. Plan the next checkpoint before modifying application code.
+C20G: Class Log Approval Integrity and Branch Privacy. See `docs/agent/NEXT.md`.
