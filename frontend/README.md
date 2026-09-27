@@ -22,7 +22,6 @@ The app will be available at http://localhost:5173
 ## Pages
 
 - `/login` - Login page
-- `/register` - Registration page
 - `/dashboard` - Dashboard with stats and charts
 - `/profile` - Profile management
 - `/subjects` - Subject management
@@ -32,10 +31,3 @@ The app will be available at http://localhost:5173
 - `/edit-log/:id` - Edit a class log
 - `/salary-report` - Monthly salary report with export
 - `/settings` - Account settings
-
-## Demo Credentials
-
-```
-Email: lecturer@mie.com
-Password: password123
-```

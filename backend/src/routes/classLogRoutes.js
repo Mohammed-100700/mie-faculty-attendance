@@ -7,12 +7,12 @@ const {
   updateClassLog,
   deleteClassLog,
 } = require('../controllers/classLogController');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, authorizeRole } = require('../middleware/authMiddleware');
 
-router.post('/', protect, createClassLog);
-router.get('/my', protect, getMyClassLogs);
-router.get('/:id', protect, getClassLog);
-router.put('/:id', protect, updateClassLog);
-router.delete('/:id', protect, deleteClassLog);
+router.post('/', protect, authorizeRole('Lecturer'), createClassLog);
+router.get('/my', protect, authorizeRole('Lecturer'), getMyClassLogs);
+router.get('/:id', protect, authorizeRole('Lecturer'), getClassLog);
+router.put('/:id', protect, authorizeRole('Lecturer'), updateClassLog);
+router.delete('/:id', protect, authorizeRole('Lecturer'), deleteClassLog);
 
 module.exports = router;

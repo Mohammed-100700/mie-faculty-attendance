@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FiBook, FiPlus, FiCheckCircle } from 'react-icons/fi';
-import { getSubjects, createSubject, seedSubjects } from '../api/subjectApi';
+import { getSubjects, createSubject } from '../api/subjectApi';
 
 const Subjects = () => {
   const [subjects, setSubjects] = useState([]);
@@ -24,16 +24,6 @@ const Subjects = () => {
   useEffect(() => {
     fetchSubjects();
   }, []);
-
-  const handleSeed = async () => {
-    try {
-      await seedSubjects();
-      await fetchSubjects();
-      setSuccess('Default subjects seeded successfully!');
-    } catch {
-      setError('Failed to seed subjects.');
-    }
-  };
 
   const handleAddSubject = async (e) => {
     e.preventDefault();
@@ -106,19 +96,12 @@ const Subjects = () => {
 
       {/* Subjects List */}
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">All Subjects</h3>
-          {subjects.length === 0 && (
-            <button onClick={handleSeed} className="btn-secondary text-sm">
-              Seed Default Subjects
-            </button>
-          )}
-        </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">All Subjects</h3>
 
         {subjects.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
             <FiBook className="w-10 h-10 mx-auto mb-2 opacity-50" />
-            <p>No subjects found. Add a custom subject or seed defaults.</p>
+            <p>No subjects found. Add a custom subject to get started.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

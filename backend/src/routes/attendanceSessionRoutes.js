@@ -23,15 +23,15 @@ router.get('/reports', protect, authorizeRole('Executive Office', 'Academic Mana
 router.get('/reports/students', protect, authorizeRole('Executive Office', 'Academic Manager'), getStudentReports);
 
 // Protected routes (lecturer only) — specific paths FIRST
-router.post('/', protect, createSession);
-router.get('/my', protect, getMySessions);
+router.post('/', protect, authorizeRole('Lecturer'), createSession);
+router.get('/my', protect, authorizeRole('Lecturer'), getMySessions);
 
 // Generic /:id routes — MUST come after all specific paths
-router.get('/:id', protect, getSession);
-router.get('/:id/checkins', protect, getCheckins);
-router.put('/:id/close', protect, closeSession);
-router.put('/:id/cancel', protect, cancelSession);
-router.put('/:id/attendance', protect, saveAttendance);
+router.get('/:id', protect, authorizeRole('Lecturer'), getSession);
+router.get('/:id/checkins', protect, authorizeRole('Lecturer'), getCheckins);
+router.put('/:id/close', protect, authorizeRole('Lecturer'), closeSession);
+router.put('/:id/cancel', protect, authorizeRole('Lecturer'), cancelSession);
+router.put('/:id/attendance', protect, authorizeRole('Lecturer'), saveAttendance);
 router.post('/:id/checkin', studentCheckin);
 
 module.exports = router;
