@@ -5,7 +5,7 @@ A full-stack MERN web application for MIE Pathways lecturers to log class attend
 ## Features
 
 - **Authentication**: JWT-based login with role-based access control
-- **Class Logging**: Manual self check-in and QR check-in
+- **Class Logging**: Manual self check-in
 - **Salary Tracking**: Automatic salary calculation based on present classes
 - **Reports**: Monthly salary reports with PDF and Excel export
 - **Dashboard**: Overview of classes, attendance, and estimated salary
@@ -76,14 +76,6 @@ Frontend runs on: http://localhost:5173
 5. `payableAmount = payableClasses * ratePerClassAtSubmission`.
 6. Monthly salary = sum of all payable amounts for that month.
 
-## How QR Check-In Works
-
-1. Branch QR tokens are generated for Dhanmondi and Uttara.
-2. Lecturer scans/enters a QR token.
-3. Backend verifies the token and identifies the branch.
-4. Class log form opens with the branch pre-filled.
-5. Lecturer completes remaining fields and submits.
-
 ## How to Export Reports
 
 1. Navigate to "Monthly Salary Report" page.
@@ -117,11 +109,6 @@ Frontend runs on: http://localhost:5173
 - `GET /api/reports/summary` - Dashboard summary
 - `GET /api/reports/branch-summary` - Branch breakdown
 - `GET /api/reports/subject-summary` - Subject breakdown
-
-### QR
-- `POST /api/qr/generate` - Generate QR token
-- `POST /api/qr/verify` - Verify QR token
-- `GET /api/qr/branches` - Get branch QR codes
 
 ## Project Structure
 

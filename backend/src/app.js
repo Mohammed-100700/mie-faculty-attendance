@@ -10,8 +10,6 @@ const subjectRoutes = require('./routes/subjectRoutes');
 const classLogRoutes = require('./routes/classLogRoutes');
 const attendanceApprovalRoutes = require('./routes/attendanceApprovalRoutes');
 const attendanceSessionRoutes = require('./routes/attendanceSessionRoutes');
-const qrRoutes = require('./routes/qrRoutes');
-const marksSheetRoutes = require('./routes/marksSheetRoutes');
 const workbookRoutes = require('./routes/workbookRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
@@ -55,8 +53,6 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/class-logs', classLogRoutes);
 app.use('/api/attendance', attendanceApprovalRoutes);
 app.use('/api/attendance-sessions', attendanceSessionRoutes);
-app.use('/api/qr', qrRoutes);
-app.use('/api/marks-sheets', marksSheetRoutes);
 app.use('/api/workbook', workbookRoutes);
 app.use('/api/admin', adminRoutes);
 

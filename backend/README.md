@@ -53,8 +53,3 @@
 - `GET /api/reports/summary` - Dashboard summary (protected)
 - `GET /api/reports/branch-summary` - Branch breakdown (protected)
 - `GET /api/reports/subject-summary` - Subject breakdown (protected)
-
-### QR
-- `POST /api/qr/generate` - Generate QR token (protected)
-- `POST /api/qr/verify` - Verify QR token (protected)
-- `GET /api/qr/branches` - Get branch QR codes (protected)

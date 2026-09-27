@@ -11,7 +11,6 @@ import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import Subjects from './pages/Subjects';
 import SubmitClassLog from './pages/SubmitClassLog';
-import QRCheckIn from './pages/QRCheckIn';
 import MyClassLogs from './pages/MyClassLogs';
 import EditClassLog from './pages/EditClassLog';
 import Settings from './pages/Settings';
@@ -62,14 +61,6 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['Lecturer']}>
                   <SubmitClassLog />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="qr-checkin"
-              element={
-                <ProtectedRoute allowedRoles={['Lecturer']}>
-                  <QRCheckIn />
                 </ProtectedRoute>
               }
             />
