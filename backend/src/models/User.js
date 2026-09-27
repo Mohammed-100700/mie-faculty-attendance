@@ -35,6 +35,16 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Incremented to invalidate every JWT previously issued for this user
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      select: true,
+      validate: {
+        validator: Number.isInteger,
+        message: 'Token version must be an integer',
+      },
+    },
     branches: [
       {
         type: String,
@@ -50,10 +60,12 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: {
       type: String,
       default: null,
+      select: false,
     },
     resetPasswordExpires: {
       type: Date,
       default: null,
+      select: false,
     },
     // Branch this Academic Manager oversees (null for Lecturers)
     managedBranch: {
@@ -62,7 +74,7 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
     // Email settings for sending marks
-    emailAppPassword: { type: String, default: null },
+    emailAppPassword: { type: String, default: null, select: false },
   },
   {
     timestamps: true,
@@ -79,5 +91,11 @@ userSchema.pre('save', async function (next) {
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Explicit allow-list of user fields safe to return to clients and attach to
+// req.user. Never add password, emailAppPassword, resetPasswordToken or
+// resetPasswordExpires to this projection.
+userSchema.statics.SAFE_FIELDS =
+  '_id name email phone role isActive branches subjects managedBranch createdAt tokenVersion';
 
 module.exports = mongoose.model('User', userSchema);

@@ -20,14 +20,28 @@ const protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-password');
 
-    if (!req.user) {
+    // Only the safe allow-list is loaded: never expose password,
+    // emailAppPassword, resetPasswordToken or resetPasswordExpires.
+    const user = await User.findById(decoded.id).select(User.SAFE_FIELDS);
+
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'User not found.',
       });
     }
+
+    // Tokens issued before tokenVersion existed, or before an administrator
+    // password reset bumped it, are rejected.
+    if (!Number.isInteger(decoded.tokenVersion) || decoded.tokenVersion !== user.tokenVersion) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized. Token invalid or expired.',
+      });
+    }
+
+    req.user = user;
 
     // Block inactive users from protected requests
     if (req.user.isActive === false) {

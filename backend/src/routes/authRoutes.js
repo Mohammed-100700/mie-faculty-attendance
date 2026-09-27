@@ -1,12 +1,27 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
-const { login, getMe, updateProfile, forgotPassword, resetPassword } = require('../controllers/authController');
+const { login, getMe, updateProfile } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 
-router.post('/login', login);
+// Credential-stuffing protection for login only. Successful logins are
+// refunded, so only failed attempts count against the allowance.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many login attempts. Please try again later.',
+    });
+  },
+});
+
+router.post('/login', loginLimiter, login);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
 
 module.exports = router;

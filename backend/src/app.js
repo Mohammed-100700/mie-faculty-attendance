@@ -18,6 +18,9 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
+// Sit behind a single reverse proxy so req.ip reflects the real client
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 

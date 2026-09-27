@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { FiMail, FiLock, FiLogIn } from 'react-icons/fi';
 import { login } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
@@ -70,7 +70,7 @@ const Login = () => {
                   value={form.email}
                   onChange={handleChange}
                   className="input-field pl-10"
-                  placeholder="lecturer@mie.com"
+                  placeholder="you@mie.com"
                   required
                 />
               </div>
@@ -90,12 +90,6 @@ const Login = () => {
                   required
                 />
               </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Link to="/forgot-password" className="text-sm text-primary-600 hover:underline font-medium">
-                Forgot password?
-              </Link>
             </div>
 
             <button
@@ -118,15 +112,9 @@ const Login = () => {
             <p className="text-sm text-gray-500">
               Staff accounts are created by the System Administrator.
             </p>
-          </div>
-
-          {/* Demo credentials */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-700 font-medium mb-1">Demo Credentials:</p>
-            <p className="text-xs text-blue-600">Lecturer: lecturer@mie.com</p>
-            <p className="text-xs text-blue-600">Manager: manager@mie.com</p>
-            <p className="text-xs text-blue-600">Executive: executive@mie.com</p>
-            <p className="text-xs text-blue-600">Password: password123</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Lost your password? Contact the System Administrator for a reset.
+            </p>
           </div>
         </div>
       </div>

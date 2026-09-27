@@ -367,8 +367,10 @@ const resetPassword = async (req, res, next) => {
       });
     }
 
-    // Set temporary password - pre-save hook will hash it automatically
+    // Set temporary password and invalidate every previously issued token
+    // - pre-save hook will hash the password
     user.password = temporaryPassword;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save(); // pre-save hook runs bcrypt hash
 
     // Exclude sensitive fields from response

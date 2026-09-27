@@ -38,22 +38,17 @@ const login = async (req, res, next) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
-    const populatedUser = await User.findById(user._id).populate('subjects');
+    const populatedUser = await User.findById(user._id)
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
 
     res.json({
       success: true,
       message: 'Login successful.',
       data: {
-        _id: populatedUser._id,
-        name: populatedUser.name,
-        email: populatedUser.email,
-        phone: populatedUser.phone,
-        role: populatedUser.role,
-        branches: populatedUser.branches,
-        subjects: populatedUser.subjects,
-        managedBranch: populatedUser.managedBranch,
+        ...populatedUser.toObject(),
         token,
       },
     });
@@ -66,7 +61,10 @@ const login = async (req, res, next) => {
 // @route   GET /api/auth/me
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).populate('subjects');
+    const user = await User.findById(req.user._id)
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
+
     res.json({
       success: true,
       data: user,
@@ -92,7 +90,9 @@ const updateProfile = async (req, res, next) => {
     const user = await User.findByIdAndUpdate(req.user._id, updates, {
       new: true,
       runValidators: true,
-    }).populate('subjects');
+    })
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
 
     res.json({
       success: true,
@@ -104,100 +104,4 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Forgot password — generate a 6-digit reset PIN
-// @route   POST /api/auth/forgot-password
-const forgotPassword = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required.' });
-    }
-
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
-
-    // Always return success to prevent email enumeration
-    if (!user) {
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a reset PIN has been generated.',
-      });
-    }
-
-    // Generate a random 6-digit PIN
-    const crypto = require('crypto');
-    const pin = crypto.randomInt(100000, 999999).toString();
-
-    user.resetPasswordToken = pin;
-    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    await user.save({ validateBeforeSave: false });
-
-    // Return the PIN directly in the response (no email needed)
-    return res.json({
-      success: true,
-      message: 'Reset PIN generated. Use it within 15 minutes.',
-      pin, // 6-digit PIN displayed on screen
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Reset password using PIN
-// @route   POST /api/auth/reset-password
-const resetPassword = async (req, res, next) => {
-  try {
-    const { email, pin, newPassword } = req.body;
-
-    if (!email || !pin || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Email, PIN, and new password are required.' });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
-    }
-
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
-
-    if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired PIN.' });
-    }
-
-    // Check PIN match and expiry
-    if (user.resetPasswordToken !== pin) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired PIN.' });
-    }
-
-    if (!user.resetPasswordExpires || user.resetPasswordExpires < new Date()) {
-      return res.status(400).json({ success: false, message: 'PIN has expired. Please request a new one.' });
-    }
-
-    // Reset password and clear the token
-    user.password = newPassword;
-    user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
-    await user.save();
-
-    const token = generateToken(user._id);
-    const populatedUser = await User.findById(user._id).populate('subjects');
-
-    return res.json({
-      success: true,
-      message: 'Password reset successful.',
-      data: {
-        _id: populatedUser._id,
-        name: populatedUser.name,
-        email: populatedUser.email,
-        role: populatedUser.role,
-        branches: populatedUser.branches,
-        subjects: populatedUser.subjects,
-        managedBranch: populatedUser.managedBranch,
-        token,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = { login, getMe, updateProfile, forgotPassword, resetPassword };
+module.exports = { login, getMe, updateProfile };
