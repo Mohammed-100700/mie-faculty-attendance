@@ -2,7 +2,7 @@
 
 Updated: 2026-09-27
 Branch: `feature/student-attendance-v2`
-Latest completed work: C20F workbook mutation integrity (`3b2258d`)
+Latest completed work: C20G class log approval integrity and branch privacy (`c5322b3`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -31,10 +31,11 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - The public session-code response exposes only `isCancelled`; cancellation reasons and actors remain protected.
 - Workbook assignment values are administrator-owned. Lecturers cannot edit their own branch or subject assignments, and academic records are authorized against the database rather than a client value.
 - Workbook mutation is validated positionally and authorized against current assignments. A malformed index is a controlled 400; an unassigned or inactive sheet is a controlled 403; missing records are controlled 404s.
-- Class-log creation and update store an accepted calendar day at UTC midnight from an exact `YYYY-MM-DD` value. Impossible days are rejected instead of rolling over.
-- Class-log month/year filters use UTC calendar boundaries; a year-only request selects that full year, while a month requires a year.
-- Academic Manager class-log approval is branch-scoped. Responses contain only the manager's own entry, with `totalClasses` and `approvalStatus` recomputed for that entry, and the stored `ClassLog` is never shaped in place.
-- Class-log decisions are single-document atomic updates guarded by a `Pending` entry for the manager's branch, and they recalculate the stored top-level `approvalStatus` in the same operation. Only a `Pending` entry can be decided, and a re-review is a controlled 409.
+- Class-log creation and update store an accepted calendar day at UTC midnight from an exact `YYYY-MM-DD` value. Impossible days are rejected instead of rolling over. A supplied `remarks` value must be a string of at most 1000 characters.
+- Class-log month/year filters use UTC calendar boundaries. A year-only request selects that full year, a month requires a year, and malformed values are controlled 400s.
+- Academic Manager class-log approval is branch-scoped. All four approval endpoints require a non-empty `managedBranch`. Responses contain only the manager's own entry, with `totalClasses` and `approvalStatus` recomputed for that entry, and the stored `ClassLog` is never shaped in place. Another branch's entries, approvers, timestamps, and rejection reasons are never returned.
+- Class-log decisions are single-document atomic updates guarded by a `Pending` entry for the manager's branch, and they recalculate the stored top-level `approvalStatus` in the same operation. Only a `Pending` entry can be decided, and a re-review is a controlled 409. A stale document never rewrites `entries`, so decisions on different branches are both preserved.
+- A class-log rejection reason must be a string of 3 to 300 characters after trimming. An invalid reason is a controlled 400 that writes nothing.
 
 ## Completed checkpoints
 
@@ -56,7 +57,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C20D: legacy QR and marks integration retirement — `5b82609`
 - C20E: lecturer assignment enforcement — `6b36c37`
 - C20F: workbook mutation integrity — `3b2258d`
+- C20G: class log approval integrity and branch privacy — `c5322b3`
 
 ## Current task
 
-C20G: Class Log Approval Integrity and Branch Privacy. See `docs/agent/NEXT.md`.
+C20H: Administrator User and Assignment Integrity. See `docs/agent/NEXT.md`.
