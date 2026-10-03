@@ -3,7 +3,6 @@ import {
   FiHome,
   FiUser,
   FiPlusCircle,
-  FiGrid,
   FiBook,
   FiList,
   FiMapPin,
@@ -22,9 +21,8 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const lecturerNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: false },
-    { to: '/start-session', icon: FiPlay, label: 'Start Session', end: false },
+    { to: '/start-session', icon: FiPlay, label: 'Attendance Sessions', end: false },
     { to: '/submit-log', icon: FiPlusCircle, label: 'Submit Attendance', end: false },
-    { to: '/qr-checkin', icon: FiGrid, label: 'QR Check-In', end: false },
     { to: '/my-logs', icon: FiList, label: 'My Attendance', end: false },
     { to: '/marks', icon: FiClipboard, label: 'Marks Management', end: false },
     { to: '/profile', icon: FiUser, label: 'Profile', end: false },
@@ -34,6 +32,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const amNavItems = [
     { to: '/dashboard', icon: FiHome, label: 'Dashboard', end: false },
     { to: '/attendance-approval', icon: FiCheckCircle, label: 'Attendance Approval', end: false },
+    { to: '/executive-dashboard', icon: FiBarChart2, label: 'Attendance Reports', end: false },
     { to: '/executive-marks', icon: FiEye, label: 'Marks Review', end: false },
     { to: '/settings', icon: FiSettings, label: 'Settings', end: false },
   ];

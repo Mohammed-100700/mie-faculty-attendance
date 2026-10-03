@@ -1,5 +1,29 @@
 const mongoose = require('mongoose');
 
+const rosterSnapshotStudentSchema = new mongoose.Schema(
+  {
+    studentRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: 'Student',
+    },
+    mieStudentId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    studentName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+    timestamps: false,
+  }
+);
+
 const attendanceSessionSchema = new mongoose.Schema(
   {
     lecturerId: {
@@ -22,6 +46,11 @@ const attendanceSessionSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    year: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     sessionDate: {
       type: Date,
       required: true,
@@ -43,6 +72,36 @@ const attendanceSessionSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    workbookId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workbook',
+      default: null,
+    },
+    sheetIndex: {
+      type: Number,
+      default: null,
+    },
+    rosterSnapshot: {
+      type: [rosterSnapshotStudentSchema],
+      default: undefined,
+    },
+    // Auditable cancellation. A cancelled session is never deleted:
+    // the record, its roster snapshot, and its check-ins are all preserved.
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: null,
     },
   },
   { timestamps: true }

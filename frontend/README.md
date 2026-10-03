@@ -22,20 +22,11 @@ The app will be available at http://localhost:5173
 ## Pages
 
 - `/login` - Login page
-- `/register` - Registration page
 - `/dashboard` - Dashboard with stats and charts
 - `/profile` - Profile management
 - `/subjects` - Subject management
 - `/submit-log` - Submit class log (self check-in)
-- `/qr-checkin` - QR code check-in
 - `/my-logs` - View and filter class logs
 - `/edit-log/:id` - Edit a class log
 - `/salary-report` - Monthly salary report with export
 - `/settings` - Account settings
-
-## Demo Credentials
-
-```
-Email: lecturer@mie.com
-Password: password123
-```

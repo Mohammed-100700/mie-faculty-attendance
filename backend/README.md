@@ -17,9 +17,9 @@
    mongod
    ```
 
-4. Seed the database:
+4. Set `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` in `.env`, then create the first administrator:
    ```bash
-   npm run seed
+   npm run create-super-admin
    ```
 
 5. Start the server:
@@ -30,19 +30,16 @@
 ## API Endpoints
 
 ### Auth
-- `POST /api/auth/register` - Register new lecturer
 - `POST /api/auth/login` - Login
 - `GET /api/auth/me` - Get current user (protected)
 - `PUT /api/auth/profile` - Update profile (protected)
 
 ### Branches
-- `GET /api/branches` - Get all branches (protected)
-- `POST /api/branches/seed` - Seed default branches (protected)
+- `GET /api/branches` - Get all active branches (public)
 
 ### Subjects
-- `GET /api/subjects` - Get all subjects (protected)
-- `POST /api/subjects` - Create custom subject (protected)
-- `POST /api/subjects/seed` - Seed default subjects (protected)
+- `GET /api/subjects` - Get all active subjects (public)
+- `POST /api/subjects` - Create custom subject (Lecturer only)
 
 ### Class Logs
 - `POST /api/class-logs` - Create class log (protected)
@@ -56,15 +53,3 @@
 - `GET /api/reports/summary` - Dashboard summary (protected)
 - `GET /api/reports/branch-summary` - Branch breakdown (protected)
 - `GET /api/reports/subject-summary` - Subject breakdown (protected)
-
-### QR
-- `POST /api/qr/generate` - Generate QR token (protected)
-- `POST /api/qr/verify` - Verify QR token (protected)
-- `GET /api/qr/branches` - Get branch QR codes (protected)
-
-## Demo Credentials
-
-```
-Email: lecturer@mie.com
-Password: password123
-```

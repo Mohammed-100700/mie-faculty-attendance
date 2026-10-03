@@ -4,8 +4,8 @@ A full-stack MERN web application for MIE Pathways lecturers to log class attend
 
 ## Features
 
-- **Authentication**: JWT-based login/register
-- **Class Logging**: Manual self check-in and QR check-in
+- **Authentication**: JWT-based login with role-based access control
+- **Class Logging**: Manual self check-in
 - **Salary Tracking**: Automatic salary calculation based on present classes
 - **Reports**: Monthly salary reports with PDF and Excel export
 - **Dashboard**: Overview of classes, attendance, and estimated salary
@@ -40,11 +40,22 @@ The app will use database: `mie_faculty_attendance`
 ```bash
 cd backend
 npm install
-npm run seed
 npm run dev
 ```
 
 Backend runs on: http://localhost:5000
+
+### Create the first Super Admin
+
+Set `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` in `backend/.env`, then run:
+
+```bash
+cd backend
+npm run create-super-admin
+```
+
+Super Admin accounts are created from the command line only, and can create
+lecturer, academic manager and executive office accounts.
 
 ### Frontend Setup
 
@@ -56,14 +67,6 @@ npm run dev
 
 Frontend runs on: http://localhost:5173
 
-## Demo Credentials
-
-```
-Email: lecturer@mie.com
-Password: password123
-Rate per class: 1500 BDT
-```
-
 ## How Salary Calculation Works
 
 1. Each lecturer has a `ratePerClass` stored in their profile.
@@ -72,14 +75,6 @@ Rate per class: 1500 BDT
 4. `payableClasses = numberOfClasses` (if Present), `0` (if Absent or Cancelled).
 5. `payableAmount = payableClasses * ratePerClassAtSubmission`.
 6. Monthly salary = sum of all payable amounts for that month.
-
-## How QR Check-In Works
-
-1. Branch QR tokens are generated for Dhanmondi and Uttara.
-2. Lecturer scans/enters a QR token.
-3. Backend verifies the token and identifies the branch.
-4. Class log form opens with the branch pre-filled.
-5. Lecturer completes remaining fields and submits.
 
 ## How to Export Reports
 
@@ -91,19 +86,16 @@ Rate per class: 1500 BDT
 ## API Endpoints
 
 ### Auth
-- `POST /api/auth/register` - Register new lecturer
 - `POST /api/auth/login` - Login
 - `GET /api/auth/me` - Get current user
 - `PUT /api/auth/profile` - Update profile
 
 ### Branches
 - `GET /api/branches` - Get all branches
-- `POST /api/branches/seed` - Seed default branches
 
 ### Subjects
 - `GET /api/subjects` - Get all subjects
 - `POST /api/subjects` - Create custom subject
-- `POST /api/subjects/seed` - Seed default subjects
 
 ### Class Logs
 - `POST /api/class-logs` - Create class log
@@ -118,11 +110,6 @@ Rate per class: 1500 BDT
 - `GET /api/reports/branch-summary` - Branch breakdown
 - `GET /api/reports/subject-summary` - Subject breakdown
 
-### QR
-- `POST /api/qr/generate` - Generate QR token
-- `POST /api/qr/verify` - Verify QR token
-- `GET /api/qr/branches` - Get branch QR codes
-
 ## Project Structure
 
 ```
@@ -135,7 +122,7 @@ mie-faculty-attendance/
 │   │   ├── models/         # Mongoose models
 │   │   ├── routes/         # API routes
 │   │   ├── services/       # Business logic
-│   │   ├── utils/          # Helpers & seeders
+│   │   ├── utils/          # Token & admin helpers
 │   │   ├── app.js          # Express app
 │   │   └── server.js       # Server entry
 │   ├── package.json

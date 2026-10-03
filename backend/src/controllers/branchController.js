@@ -14,33 +14,4 @@ const getBranches = async (req, res, next) => {
   }
 };
 
-// @desc    Seed default branches
-// @route   POST /api/branches/seed
-const seedBranches = async (req, res, next) => {
-  try {
-    const defaultBranches = [
-      { name: 'Dhanmondi', code: 'DHN' },
-      { name: 'Uttara', code: 'UTT' },
-    ];
-
-    const results = [];
-    for (const branch of defaultBranches) {
-      const result = await Branch.findOneAndUpdate(
-        { code: branch.code },
-        { ...branch, isActive: true },
-        { upsert: true, new: true }
-      );
-      results.push(result);
-    }
-
-    res.json({
-      success: true,
-      message: 'Branches seeded successfully.',
-      data: results,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = { getBranches, seedBranches };
+module.exports = { getBranches };

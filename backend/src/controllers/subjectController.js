@@ -61,46 +61,4 @@ const createSubject = async (req, res, next) => {
   }
 };
 
-// @desc    Seed default NCUK IFY subjects
-// @route   POST /api/subjects/seed
-const seedSubjects = async (req, res, next) => {
-  try {
-    const defaultSubjects = [
-      'Integrated Mathematics',
-      'Technical Mathematics',
-      'Physics',
-      'Chemistry',
-      'Biology',
-      'Economics',
-      'Business Studies',
-      'Global Studies',
-      'Sociology',
-    ];
-
-    const results = [];
-    for (const name of defaultSubjects) {
-      const result = await Subject.findOneAndUpdate(
-        { name, isDefault: true },
-        {
-          name,
-          programme: 'NCUK IFY',
-          createdBy: null,
-          isDefault: true,
-          isActive: true,
-        },
-        { upsert: true, new: true }
-      );
-      results.push(result);
-    }
-
-    res.json({
-      success: true,
-      message: 'Default subjects seeded successfully.',
-      data: results,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = { getSubjects, createSubject, seedSubjects };
+module.exports = { getSubjects, createSubject };

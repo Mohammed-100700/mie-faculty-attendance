@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "docs/agent/STATE.md"
+  ],
+  "commands": {
+    "mie-context": {
+      "description": "Show compact branch and diff context",
+      "template": "Run `node scripts/harness/context.mjs` and report only anomalies or blockers. $ARGUMENTS"
+    },
+    "mie-task": {
+      "description": "Implement the active MIE checkpoint",
+      "template": "Read `docs/agent/NEXT.md` and `docs/agent/WORKFLOW.md`. Run `node scripts/harness/context.mjs`. If the checkpoint status is not READY, stop. Otherwise implement only its allowed scope, run relevant checks, inspect the actual diff, and stop before staging, committing, pushing, or deploying. $ARGUMENTS"
+    },
+    "mie-gate": {
+      "description": "Run the static gate and inspect the active checkpoint diff",
+      "template": "Read `docs/agent/NEXT.md`. Do not modify files. Run `node scripts/harness/verify-static.mjs`, inspect the actual diff against the allowed files and acceptance checks, and report PASS or FAIL with only actionable findings. Do not stage or commit. $ARGUMENTS"
+    }
+  }
+}

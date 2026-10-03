@@ -11,7 +11,6 @@ import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import Subjects from './pages/Subjects';
 import SubmitClassLog from './pages/SubmitClassLog';
-import QRCheckIn from './pages/QRCheckIn';
 import MyClassLogs from './pages/MyClassLogs';
 import EditClassLog from './pages/EditClassLog';
 import Settings from './pages/Settings';
@@ -22,8 +21,6 @@ import SessionCheckins from './pages/SessionCheckins';
 import StudentCheckin from './pages/StudentCheckin';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import ExecutiveMarks from './pages/ExecutiveMarks';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
@@ -35,8 +32,6 @@ function App() {
           <Route path="/register" element={<Navigate to="/login" replace />} />
           <Route path="/checkin" element={<StudentCheckin />} />
           <Route path="/checkin/:code" element={<StudentCheckin />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Protected Routes */}
           <Route
@@ -50,18 +45,93 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="profile" element={<Profile />} />
-            <Route path="subjects" element={<Subjects />} />
-            <Route path="submit-log" element={<SubmitClassLog />} />
-            <Route path="qr-checkin" element={<QRCheckIn />} />
-            <Route path="my-logs" element={<MyClassLogs />} />
-            <Route path="edit-log/:id" element={<EditClassLog />} />
-            <Route path="marks" element={<MarksManagement />} />
-            <Route path="attendance-approval" element={<AttendanceApproval />} />
-            <Route path="start-session" element={<StartSession />} />
-            <Route path="session/:id/checkins" element={<SessionCheckins />} />
-            <Route path="executive-dashboard" element={<ExecutiveDashboard />} />
-            <Route path="executive-marks" element={<ExecutiveMarks />} />
             <Route path="settings" element={<Settings />} />
+
+            {/* Lecturer only */}
+            <Route
+              path="subjects"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <Subjects />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="submit-log"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <SubmitClassLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="my-logs"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <MyClassLogs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="edit-log/:id"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <EditClassLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="marks"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <MarksManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="start-session"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <StartSession />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="session/:id/checkins"
+              element={
+                <ProtectedRoute allowedRoles={['Lecturer']}>
+                  <SessionCheckins />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Academic Manager only */}
+            <Route
+              path="attendance-approval"
+              element={
+                <ProtectedRoute allowedRoles={['Academic Manager']}>
+                  <AttendanceApproval />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Academic Manager and Executive Office */}
+            <Route
+              path="executive-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['Academic Manager', 'Executive Office']}>
+                  <ExecutiveDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="executive-marks"
+              element={
+                <ProtectedRoute allowedRoles={['Academic Manager', 'Executive Office']}>
+                  <ExecutiveMarks />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           {/* Admin route - Super Admin only */}

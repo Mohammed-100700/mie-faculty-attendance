@@ -7,6 +7,9 @@ import StatusMenu from '../components/admin/StatusMenu';
 import ResetPasswordModal from '../components/admin/ResetPasswordModal';
 import StatusConfirmModal from '../components/admin/StatusConfirmModal';
 
+// Roles that expose Edit / Activate-Deactivate / Reset Password actions
+const ACTIONABLE_ROLES = ['Lecturer', 'Academic Manager', 'Executive Office'];
+
 const AdminUsers = () => {
   const [users, setUsers] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -139,15 +142,15 @@ const AdminUsers = () => {
       const subjects = Array.isArray(user.subjects) ? user.subjects : [];
 
       return (
-        <div className="space-y-1">
+        <div className="space-y-1 break-words">
           {branches.length > 0 && (
-            <div className="whitespace-nowrap">
+            <div className="break-words">
               {branches.join(', ')}
             </div>
           )}
 
           {subjects.length > 0 && (
-            <div className="text-xs text-gray-500 whitespace-nowrap">
+            <div className="text-xs text-gray-500">
               {subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}
             </div>
           )}
@@ -178,6 +181,62 @@ const AdminUsers = () => {
 
   const statusLabel = (user) => safeIsActive(user) ? 'Active' : 'Inactive';
 
+  // Single source of truth for user actions, shared by the desktop table
+  // and the mobile/tablet card presentation.
+  const renderUserActions = (user) => {
+    if (user.role === 'Super Admin') {
+      return <span className="text-xs text-gray-500">Protected account</span>;
+    }
+
+    if (!ACTIONABLE_ROLES.includes(user.role)) {
+      return <span className="text-xs text-gray-500">Coming in next step</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setEditingUser(user)}
+        >
+          Edit
+        </button>
+
+        <button
+          type="button"
+          className={`rounded-md px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${statusUpdatingId === user._id
+            ? 'bg-gray-200 text-gray-500'
+            : safeIsActive(user)
+              ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
+              : 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'}`}
+          onClick={() => requestStatusChange(user)}
+          disabled={statusUpdatingId === user._id}
+        >
+          {statusUpdatingId === user._id
+            ? 'Updating...'
+            : safeIsActive(user)
+              ? 'Deactivate'
+              : 'Activate'}
+        </button>
+
+        <StatusMenu
+          isOpen={openMenuId === user._id}
+          onToggle={() =>
+            setOpenMenuId((current) =>
+              current === user._id ? null : user._id
+            )
+          }
+          onResetPassword={() => {
+            if (user.role === 'Super Admin') return;
+
+            setOpenMenuId(null);
+            setResetUser(user);
+          }}
+        />
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="py-12 text-center">
@@ -206,25 +265,25 @@ const AdminUsers = () => {
   return (
     <div className="p-4 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <h1 className="mb-2 text-2xl font-bold text-gray-900 sm:text-3xl">
           User Management
         </h1>
         <p className="text-gray-600">Manage system users</p>
       </div>
 
       {/* Top actions: Back to Dashboard + Add User */}
-      <div className="flex justify-between mb-6">
-        <Link to="/admin" className="btn-secondary">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Link to="/admin" className="btn-secondary self-start">
           Back to Dashboard
         </Link>
         {showCreate ? (
-          <button onClick={() => setShowCreate(false)} className="btn-link text-primary hover:text-primary-700">
+          <button onClick={() => setShowCreate(false)} className="btn-link self-start text-primary hover:text-primary-700">
             Cancel
           </button>
         ) : (
           <button
             onClick={() => navigate('/admin/users', { state: { openCreate: true } })}
-            className="btn-primary"
+            className="btn-primary self-start"
           >
             Add User
           </button>
@@ -232,7 +291,7 @@ const AdminUsers = () => {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="block text-sm font-medium text-gray-500 mb-2">
             Search
@@ -279,120 +338,129 @@ const AdminUsers = () => {
         </div>
       </div>
 
-      {/* Table - exactly six columns: Name, Email, Role, Assignment, Status, Actions */}
-      <div className="bg-white rounded-xl overflow-shadow shadow-sm border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead>
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Email
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Role
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Assignment
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-4 text-center text-gray-500">
-                  No users found.
-                </td>
-              </tr>
-            ) : filteredUsers.map((user) => (
-              <tr key={user._id} className="border-b border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-4 text-sm text-gray-700">
-                  <p className="font-medium text-gray-900">{user.name}</p>
-                </td>
+      {/* Single filtered-empty state shared by both responsive presentations */}
+      {filteredUsers.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center shadow-sm">
+          <p className="text-gray-500">No users found.</p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop (lg+): semantic six-column table - Name, Email, Role, Assignment, Status, Actions */}
+          <div className="hidden lg:block">
+            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+              <table className="min-w-full w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Name
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Email
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Role
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Assignment
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Status
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((user) => (
+                    <tr key={user._id} className="border-b border-gray-200 hover:bg-gray-50">
+                      <th scope="row" className="px-4 py-4 text-left text-sm font-medium text-gray-900">
+                        <span className="break-words">{user.name}</span>
+                      </th>
 
-                <td className="px-4 py-4 text-sm text-gray-700">
-                  <span className="text-gray-600">{user.email}</span>
-                </td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        <span className="break-words text-gray-600">{user.email}</span>
+                      </td>
 
-                <td className="px-4 py-4 text-sm text-gray-700">
-                  <span className="font-medium text-gray-900">
-                    {roleDisplay(user.role)}
-                  </span>
-                </td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        <span className="break-words font-medium text-gray-900">
+                          {roleDisplay(user.role)}
+                        </span>
+                      </td>
 
-                <td className="px-4 py-4 text-sm text-gray-700">
-                  {getAssignmentContent(user)}
-                </td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        {getAssignmentContent(user)}
+                      </td>
 
-                <td className="px-4 py-4 text-sm text-gray-700">
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        <span
+                          className={`inline-block px-2 py-1 rounded text-xs font-medium ${statusBadgeClass(user)}`}
+                        >
+                          {statusLabel(user)}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4 text-xs text-gray-500">
+                        {renderUserActions(user)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile/tablet (< lg): one card per user, same filtered data */}
+          <div className="space-y-3 lg:hidden">
+            {filteredUsers.map((user) => (
+              <article
+                key={user._id}
+                aria-label={user.name}
+                className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="break-words text-sm font-semibold text-gray-900">
+                      {user.name}
+                    </h2>
+                    <p className="break-words text-xs text-gray-600">{user.email}</p>
+                  </div>
+
                   <span
-                    className={`inline-block px-2 py-1 rounded text-xs font-medium ${statusBadgeClass(user)}`}
+                    className={`inline-block shrink-0 rounded px-2 py-1 text-xs font-medium ${statusBadgeClass(user)}`}
                   >
                     {statusLabel(user)}
                   </span>
-                </td>
+                </div>
 
-                <td className="px-4 py-4 text-xs text-gray-500">
-                  {user.role === 'Super Admin'
-                    ? 'Protected account'
-                    : user.role === 'Lecturer' || user.role === 'Academic Manager' || user.role === 'Executive Office'
-                      ? (
-<div className="inline-flex items-center gap-2 whitespace-nowrap">
-                              <button
-                                type="button"
-                                className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                onClick={() => setEditingUser(user)}
-                              >
-                                Edit
-                              </button>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Role
+                    </dt>
+                    <dd className="min-w-0 break-words font-medium text-gray-900">
+                      {roleDisplay(user.role)}
+                    </dd>
+                  </div>
 
-                              <button
-                                type="button"
-                                className={`px-3 py-1.5 rounded-md text-xs font-medium ${statusUpdatingId === user._id
-                                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                  : safeIsActive(user)
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'bg-green-600 text-white hover:bg-green-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                                onClick={() => requestStatusChange(user)}
-                                disabled={statusUpdatingId === user._id}
-                              >
-                                {statusUpdatingId === user._id
-                                  ? 'Updating...'
-                                  : safeIsActive(user)
-                                    ? 'Deactivate'
-                                    : 'Activate'}
-                              </button>
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Assignment
+                    </dt>
+                    <dd className="min-w-0 break-words text-gray-700">
+                      {getAssignmentContent(user)}
+                    </dd>
+                  </div>
+                </dl>
 
-                              <StatusMenu
-                              isOpen={openMenuId === user._id}
-                              onToggle={() =>
-                                setOpenMenuId((current) =>
-                                  current === user._id ? null : user._id
-                                )
-                              }
-                              onResetPassword={() => {
-                                if (user.role === 'Super Admin') return;
-
-                                setOpenMenuId(null);
-                                setResetUser(user);
-                              }}
-                            />
-                          </div>
-                        )
-                      : 'Coming in next step'}
-                </td>
-              </tr>
+                <div className="mt-4 border-t border-gray-200 pt-3">
+                  {renderUserActions(user)}
+                </div>
+              </article>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </>
+      )}
 
       {editingUser && (
         <EditUserModal

@@ -1,5 +1,54 @@
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
+
+// Self-service password change accepts exactly these two fields. Every other
+// field is rejected instead of ignored, so this endpoint can never be used to
+// smuggle an administrator-owned update alongside a password change.
+const PASSWORD_CHANGE_FIELDS = ['currentPassword', 'newPassword'];
+
+const MIN_NEW_PASSWORD_LENGTH = 6;
+const MAX_NEW_PASSWORD_LENGTH = 128;
+
+// The User pre-save hook hashes with 12 rounds. A self-service change must be
+// exactly as strong as an administrator reset, and the pre-save hook is not
+// available here because an already hashed password is written directly.
+const BCRYPT_ROUNDS = 12;
+
+const PASSWORD_BODY_MESSAGE = 'Request body must be a JSON object.';
+const PASSWORD_FIELDS_MESSAGE = 'Only currentPassword and newPassword are accepted.';
+const CURRENT_PASSWORD_TYPE_MESSAGE = 'Current password must be a string.';
+const CURRENT_PASSWORD_REQUIRED_MESSAGE = 'Current password is required.';
+const CURRENT_PASSWORD_MAX_MESSAGE = `Current password must be ${MAX_NEW_PASSWORD_LENGTH} characters or fewer.`;
+const NEW_PASSWORD_TYPE_MESSAGE = 'New password must be a string.';
+const NEW_PASSWORD_MIN_MESSAGE = `New password must be at least ${MIN_NEW_PASSWORD_LENGTH} characters.`;
+const NEW_PASSWORD_MAX_MESSAGE = `New password must be ${MAX_NEW_PASSWORD_LENGTH} characters or fewer.`;
+const INCORRECT_CURRENT_PASSWORD_MESSAGE = 'Current password is incorrect.';
+const REUSED_PASSWORD_MESSAGE = 'New password must be different from the current password.';
+const CONCURRENT_PASSWORD_CHANGE_MESSAGE =
+  'Password was changed in another session. Please sign in again.';
+const PASSWORD_USER_NOT_FOUND_MESSAGE = 'User not found.';
+
+// Self-service profile editing is deliberately tiny: a user owns their own
+// display name and phone number and nothing else.
+const PROFILE_EDITABLE_FIELDS = ['name', 'phone'];
+const PROFILE_FIELD_LABELS = { name: 'Name', phone: 'Phone' };
+
+// Assignment and permission fields are administrator-owned. Their mere presence
+// in the body is a rejected request, so a crafted `branches: []` can never be
+// used to strip assignments.
+const ADMIN_ONLY_FIELDS = [
+  'branches',
+  'subjects',
+  'managedBranch',
+  'role',
+  'isActive',
+  'tokenVersion',
+  'email',
+];
+
+const ADMIN_ONLY_MESSAGE =
+  'Assignments and account permissions can only be changed by the System Administrator.';
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -38,22 +87,17 @@ const login = async (req, res, next) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
-    const populatedUser = await User.findById(user._id).populate('subjects');
+    const populatedUser = await User.findById(user._id)
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
 
     res.json({
       success: true,
       message: 'Login successful.',
       data: {
-        _id: populatedUser._id,
-        name: populatedUser.name,
-        email: populatedUser.email,
-        phone: populatedUser.phone,
-        role: populatedUser.role,
-        branches: populatedUser.branches,
-        subjects: populatedUser.subjects,
-        managedBranch: populatedUser.managedBranch,
+        ...populatedUser.toObject(),
         token,
       },
     });
@@ -66,7 +110,10 @@ const login = async (req, res, next) => {
 // @route   GET /api/auth/me
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).populate('subjects');
+    const user = await User.findById(req.user._id)
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
+
     res.json({
       success: true,
       data: user,
@@ -76,23 +123,52 @@ const getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Update profile
+// @desc    Update own profile (name and phone only)
 // @route   PUT /api/auth/profile
 const updateProfile = async (req, res, next) => {
   try {
-    const allowedFields = ['name', 'phone', 'branches', 'subjects'];
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    // Reject administrator-owned fields before any write is attempted.
+    for (const field of ADMIN_ONLY_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        return res.status(403).json({
+          success: false,
+          message: ADMIN_ONLY_MESSAGE,
+        });
+      }
+    }
 
     const updates = {};
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
+
+    for (const field of PROFILE_EDITABLE_FIELDS) {
+      if (body[field] === undefined) continue;
+
+      if (typeof body[field] !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: `${PROFILE_FIELD_LABELS[field]} must be a string.`,
+        });
       }
+
+      updates[field] = body[field].trim();
+    }
+
+    // A name that normalizes to nothing would fail the schema required check
+    // with a confusing message, so it is rejected as a controlled 400 here.
+    if (updates.name !== undefined && !updates.name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required.',
+      });
     }
 
     const user = await User.findByIdAndUpdate(req.user._id, updates, {
       new: true,
       runValidators: true,
-    }).populate('subjects');
+    })
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
 
     res.json({
       success: true,
@@ -104,94 +180,176 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Forgot password — generate a 6-digit reset PIN
-// @route   POST /api/auth/forgot-password
-const forgotPassword = async (req, res, next) => {
+// @desc    Change own password
+// @route   PUT /api/auth/password
+// @access  Private (any active authenticated role)
+const changePassword = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const body = req.body;
 
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required.' });
-    }
-
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
-
-    // Always return success to prevent email enumeration
-    if (!user) {
-      return res.json({
-        success: true,
-        message: 'If an account with that email exists, a reset PIN has been generated.',
+    // Only a JSON object carries named fields. A missing body, an explicit
+    // null, an array, or a scalar is rejected before any field is inspected.
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({
+        success: false,
+        message: PASSWORD_BODY_MESSAGE,
       });
     }
 
-    // Generate a random 6-digit PIN
-    const crypto = require('crypto');
-    const pin = crypto.randomInt(100000, 999999).toString();
-
-    user.resetPasswordToken = pin;
-    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    await user.save({ validateBeforeSave: false });
-
-    // Return the PIN directly in the response (no email needed)
-    return res.json({
-      success: true,
-      message: 'Reset PIN generated. Use it within 15 minutes.',
-      pin, // 6-digit PIN displayed on screen
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Reset password using PIN
-// @route   POST /api/auth/reset-password
-const resetPassword = async (req, res, next) => {
-  try {
-    const { email, pin, newPassword } = req.body;
-
-    if (!email || !pin || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Email, PIN, and new password are required.' });
+    // Nothing is trimmed, lowercased, or length-checked before the key set is
+    // known to be exactly the two accepted names.
+    for (const field of Object.keys(body)) {
+      if (!PASSWORD_CHANGE_FIELDS.includes(field)) {
+        return res.status(400).json({
+          success: false,
+          message: PASSWORD_FIELDS_MESSAGE,
+        });
+      }
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    // Passwords are never trimmed: a leading or trailing space is part of the
+    // secret, and the stored length is what the length rules describe. A
+    // number, array, object, or null used where a string is expected is a
+    // controlled 400, never a thrown TypeError.
+    const { currentPassword, newPassword } = body;
+
+    if (typeof currentPassword !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: CURRENT_PASSWORD_TYPE_MESSAGE,
+      });
     }
 
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!currentPassword.length) {
+      return res.status(400).json({
+        success: false,
+        message: CURRENT_PASSWORD_REQUIRED_MESSAGE,
+      });
+    }
+
+    if (currentPassword.length > MAX_NEW_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: CURRENT_PASSWORD_MAX_MESSAGE,
+      });
+    }
+
+    if (typeof newPassword !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: NEW_PASSWORD_TYPE_MESSAGE,
+      });
+    }
+
+    if (newPassword.length < MIN_NEW_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: NEW_PASSWORD_MIN_MESSAGE,
+      });
+    }
+
+    if (newPassword.length > MAX_NEW_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: NEW_PASSWORD_MAX_MESSAGE,
+      });
+    }
+
+    // The hash is required to verify the current password, so it is selected
+    // explicitly. It is never read back into a response.
+    const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired PIN.' });
+      return res.status(401).json({
+        success: false,
+        message: PASSWORD_USER_NOT_FOUND_MESSAGE,
+      });
     }
 
-    // Check PIN match and expiry
-    if (user.resetPasswordToken !== pin) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired PIN.' });
+    // A wrong current password is a controlled 400 and never a 401: the shared
+    // Axios interceptor signs the session out on any 401, which would log out
+    // a perfectly valid session over a single typo.
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(400).json({
+        success: false,
+        message: INCORRECT_CURRENT_PASSWORD_MESSAGE,
+      });
     }
 
-    if (!user.resetPasswordExpires || user.resetPasswordExpires < new Date()) {
-      return res.status(400).json({ success: false, message: 'PIN has expired. Please request a new one.' });
+    // Reuse is rejected by comparing against the stored hash, not by comparing
+    // the two submitted strings.
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({
+        success: false,
+        message: REUSED_PASSWORD_MESSAGE,
+      });
     }
 
-    // Reset password and clear the token
-    user.password = newPassword;
-    user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
-    await user.save();
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      await bcrypt.genSalt(BCRYPT_ROUNDS)
+    );
 
-    const token = generateToken(user._id);
-    const populatedUser = await User.findById(user._id).populate('subjects');
+    // Mirrors the fallback in generateToken so the guard below always carries a
+    // concrete version. Older documents can hydrate the schema default `0`
+    // without physically storing the field, so version zero must match either
+    // representation. The guard is never omitted: an unguarded write would let
+    // a concurrent change be silently overwritten.
+    const loadedTokenVersion = Number.isInteger(user.tokenVersion)
+      ? user.tokenVersion
+      : 0;
+    const tokenVersionGuard =
+      loadedTokenVersion === 0
+        ? {
+            $or: [
+              { tokenVersion: 0 },
+              { tokenVersion: { $exists: false } },
+            ],
+          }
+        : { tokenVersion: loadedTokenVersion };
 
-    return res.json({
+    // --- Single guarded atomic update ---
+    // The tokenVersion in the filter is what makes this race-safe. Two
+    // concurrent requests both read the same version, MongoDB matches it
+    // atomically, so only one commits and bumps it; the loser matches nothing
+    // and can never overwrite the winner's password. The already hashed value
+    // is written directly, so the pre-save hook never runs and plaintext is
+    // never stored. The unused legacy reset fields are cleared in the same
+    // write.
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id, ...tokenVersionGuard },
+      {
+        $set: {
+          password: hashedPassword,
+          tokenVersion: loadedTokenVersion + 1,
+        },
+        $unset: {
+          resetPasswordToken: '',
+          resetPasswordExpires: '',
+        },
+      },
+      { new: true }
+    )
+      .select(User.SAFE_FIELDS)
+      .populate('subjects');
+
+    if (!updatedUser) {
+      return res.status(409).json({
+        success: false,
+        message: CONCURRENT_PASSWORD_CHANGE_MESSAGE,
+      });
+    }
+
+    // The replacement token carries the incremented tokenVersion, so this
+    // session stays signed in while every previously issued token fails on its
+    // next protected request.
+    const token = generateToken(updatedUser);
+
+    res.json({
       success: true,
-      message: 'Password reset successful.',
+      message: 'Password changed successfully.',
       data: {
-        _id: populatedUser._id,
-        name: populatedUser.name,
-        email: populatedUser.email,
-        role: populatedUser.role,
-        branches: populatedUser.branches,
-        subjects: populatedUser.subjects,
-        managedBranch: populatedUser.managedBranch,
+        ...updatedUser.toObject(),
         token,
       },
     });
@@ -200,4 +358,4 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-module.exports = { login, getMe, updateProfile, forgotPassword, resetPassword };
+module.exports = { login, getMe, updateProfile, changePassword };

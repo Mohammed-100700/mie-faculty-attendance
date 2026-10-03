@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node src/utils/seedData.js",
     "create-super-admin": "node src/utils/createSuperAdmin.js"
   },
   "dependencies": {
@@ -18,9 +17,7 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.7.0",
-    "qrcode": "^1.5.4",
-    "uuid": "^10.0.0"
+    "mongoose": "^8.7.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

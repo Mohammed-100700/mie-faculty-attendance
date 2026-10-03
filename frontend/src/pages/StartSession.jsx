@@ -1,266 +1,371 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlay, FiStopCircle, FiCheckCircle, FiCopy, FiUsers } from 'react-icons/fi';
-import QRCode from 'qrcode';
-import { createSession, getSession, closeSession } from '../api/attendanceSessionApi';
-import { getBranches } from '../api/branchApi';
+import { FiPlay, FiClock, FiCheckCircle, FiUsers, FiAlertCircle } from 'react-icons/fi';
+import { createSessionFromSheet, getMySessions } from '../api/attendanceSessionApi';
+import { getWorkbook } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
 
 const StartSession = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [availableBranches, setAvailableBranches] = useState([]);
-  const [branch, setBranch] = useState('');
+  const [workbook, setWorkbook] = useState(null);
+  const [loading, setLoading] = useState('loading');
+  const [selectedSheetIndex, setSelectedSheetIndex] = useState(null);
+  const [error, setError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState(null);
+  const [retrySessionsCount, setRetrySessionsCount] = useState(0);
 
   useEffect(() => {
-    const fetchBranches = async () => {
-      try {
-        const res = await getBranches();
+    if (!user) return;
+    let cancelled = false;
 
-        const assignedBranchNames = new Set(
-          (user?.branches || []).map((branchName) => String(branchName))
-        );
+    setError(null);
+    setLoading('loading');
+    getWorkbook()
+      .then((res) => {
+        if (!cancelled) {
+          setWorkbook(res.data.data);
+          setLoading('idle');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('Failed to load workbook. Retry.');
+          setLoading('error');
+        }
+      });
 
-        const branchNames = (res.data.data || [])
-          .filter((item) => assignedBranchNames.has(item.name))
-          .map((item) => item.name);
-
-        setAvailableBranches(branchNames);
-
-        setBranch((current) =>
-          branchNames.includes(current)
-            ? current
-            : branchNames[0] || ''
-        );
-      } catch (err) {
-        console.error('Failed to fetch branches:', err);
-      }
+    return () => {
+      cancelled = true;
     };
-
-    if (user) {
-      fetchBranches();
-    }
-  }, [user]);
-  const [batch, setBatch] = useState('September');
-  const [subject, setSubject] = useState('');
-  const [checkinCount, setCheckinCount] = useState(0);
-  const [copied, setCopied] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState('');
-
-  const checkinUrl = session
-    ? `${window.location.origin}/checkin/${session.sessionCode}`
-    : '';
-
-  // Generate QR code when session is created
-  useEffect(() => {
-    if (session) {
-      QRCode.toDataURL(checkinUrl, { width: 200, margin: 2 })
-        .then(setQrDataUrl)
-        .catch(() => {});
-    }
-  }, [session, checkinUrl]);
-
-  // Poll for checkin count
-  const pollCount = useCallback(async () => {
-    if (!session) return;
-    try {
-      const res = await getSession(session._id);
-      setCheckinCount(res.data.data.checkinCount);
-    } catch {
-      // silent
-    }
-  }, [session]);
+  }, [user, retryCount]);
 
   useEffect(() => {
-    if (!session) return;
-    const interval = setInterval(pollCount, 10000);
-    pollCount(); // initial fetch
-    return () => clearInterval(interval);
-  }, [session, pollCount]);
+    if (!user) return;
+    let cancelled = false;
 
-  const handleStart = async (e) => {
+    setSessionsError(null);
+    setSessionsLoading(true);
+    getMySessions()
+      .then((res) => {
+        if (!cancelled) {
+          setSessions(Array.isArray(res.data.data) ? res.data.data : []);
+          setSessionsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSessionsError('Failed to load sessions. Retry.');
+          setSessionsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, retrySessionsCount]);
+
+  const sheets = workbook?.sheets || [];
+  const hasSheets = sheets.length > 0;
+  // A session belongs to exactly one group. Cancellation is independent of
+  // isActive, so it is evaluated for both remaining groups.
+  const cancelledSessions = sessions.filter((session) => Boolean(session.cancelledAt));
+  const activeSessions = sessions.filter(
+    (session) => session.isActive === true && !session.cancelledAt
+  );
+  const closedSessions = sessions.filter(
+    (session) => session.isActive === false && !session.cancelledAt
+  );
+  const canStart =
+    loading === 'idle' &&
+    Boolean(workbook?._id) &&
+    Number.isInteger(selectedSheetIndex) &&
+    selectedSheetIndex >= 0 &&
+    Boolean(sheets[selectedSheetIndex]) &&
+    !creating;
+
+  const handleSelectSheet = (index) => {
+    setSelectedSheetIndex(index);
+    setError(null);
+  };
+
+  const handleCreateSession = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    if (!canStart) return;
+    setCreating(true);
+    setError(null);
     try {
-      const res = await createSession(branch, batch, subject);
-      setSession(res.data.data);
+      const sheet = sheets[selectedSheetIndex];
+      if (!sheet) return;
+      const payload = {
+        workbookId: workbook._id,
+        sheetIndex: selectedSheetIndex,
+        branch: sheet.branch,
+        batch: sheet.batch,
+        subject: sheet.subject,
+      };
+      const res = await createSessionFromSheet(payload);
+      navigate(`/session/${res.data.data._id}/checkins`);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to start session.');
+      setError(err.response?.data?.message || 'Failed to start session.');
     } finally {
-      setLoading(false);
+      setCreating(false);
     }
   };
 
-  const handleClose = async () => {
-    if (!session) return;
-    if (!window.confirm('Close this session? Students will no longer be able to check in.')) return;
-    try {
-      await closeSession(session._id);
-      navigate(`/session/${session._id}/checkins`);
-    } catch (err) {
-      alert(err.response?.data?.message || 'Failed to close session.');
-    }
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date unavailable';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(checkinUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Active session view
-  if (session) {
+  const renderSessionCard = (session, status) => {
+    const presentCount = session.checkinCount ?? 0;
+    const isActive = status === 'active';
+    const isCancelled = status === 'cancelled';
     return (
-      <div className="max-w-lg mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Attendance Session Active</h1>
-          <p className="text-gray-500">Share this code with your students</p>
-        </div>
-
-        {/* Session code display */}
-        <div className="card bg-gradient-to-r from-primary-500 to-primary-700 text-white text-center">
-          <p className="text-primary-100 text-sm mb-2">Session Code</p>
-          <p className="text-5xl font-mono font-bold tracking-widest">{session.sessionCode}</p>
-          <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
-            <span className="text-primary-200 text-sm">{session.batch} • {session.branch}</span>
-            {session.subject && <span className="text-primary-200 text-sm">• {session.subject}</span>}
+      <article
+        key={session._id}
+        className={`rounded-lg border bg-white p-4 transition-colors ${
+          isCancelled
+            ? 'border-red-200 hover:border-red-300'
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              {session.year && (
+                <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.year}
+                </span>
+              )}
+              {session.batch && (
+                <span className="inline-block bg-primary-600 text-white text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.batch}
+                </span>
+              )}
+              {session.branch && (
+                <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.branch}
+                </span>
+              )}
+              {session.subject && (
+                <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded">
+                  {session.subject}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">{formatDate(session.sessionDate)}</p>
           </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+              isCancelled
+                ? 'bg-red-100 text-red-800'
+                : isActive
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-gray-100 text-gray-700'
+            }`}
+          >
+            {isCancelled ? 'Cancelled' : isActive ? 'Active' : 'Closed'}
+          </span>
         </div>
-
-        {/* QR Code */}
-        {qrDataUrl && (
-          <div className="card text-center">
-            <p className="text-sm text-gray-500 mb-3">Or scan this QR code</p>
-            <img src={qrDataUrl} alt="Check-in QR Code" className="mx-auto w-48 h-48" />
-            <button onClick={handleCopy} className="text-sm text-primary-600 hover:underline mt-2 flex items-center gap-1 mx-auto">
-              <FiCopy className="w-3.5 h-3.5" />
-              {copied ? 'Copied!' : 'Copy check-in link'}
-            </button>
-          </div>
+        {isCancelled && (
+          <p className="mt-2 rounded bg-red-50 px-2 py-1 text-xs text-red-800">
+            <span className="font-semibold">Reason:</span>{' '}
+            {session.cancellationReason || 'No reason recorded.'}
+          </p>
         )}
-
-        {/* Live count */}
-        <div className="card flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-green-50 rounded-xl">
-              <FiUsers className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Students Checked In</p>
-              <p className="text-3xl font-bold text-gray-900">{checkinCount}</p>
-            </div>
-          </div>
+        <div className={`flex items-center justify-between text-sm text-gray-600 ${isCancelled ? 'mt-2' : 'mt-3'}`}>
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            <span className="text-xs text-green-600 font-medium">Live</span>
+            <FiUsers className="w-4 h-4" />
+            <span className="font-medium text-gray-800">{presentCount}</span>
+            <span className="text-gray-400">present</span>
           </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3">
           <button
+            type="button"
             onClick={() => navigate(`/session/${session._id}/checkins`)}
-            className="btn-secondary flex-1 flex items-center justify-center gap-2"
+            className="btn-secondary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
           >
-            <FiCheckCircle className="w-4 h-4" />
-            View Check-ins
-          </button>
-          <button
-            onClick={handleClose}
-            className="btn-danger flex-1 flex items-center justify-center gap-2"
-          >
-            <FiStopCircle className="w-4 h-4" />
-            End Session
+            {isActive ? 'Resume' : 'Review'}
           </button>
         </div>
-      </div>
+      </article>
     );
-  }
+  };
 
-  // Start new session form
+  const renderSessionGroup = (title, groupSessions, status, icon) => (
+    <section aria-labelledby={`${status}-sessions-heading`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3
+          id={`${status}-sessions-heading`}
+          className="flex items-center gap-2 font-semibold text-gray-900"
+        >
+          <span className="text-lg">{icon}</span>
+          {title}
+        </h3>
+        <span className="text-sm text-gray-500">{groupSessions.length}</span>
+      </div>
+      {groupSessions.length === 0 ? (
+        <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+          No {status} sessions.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {groupSessions.map((session) => renderSessionCard(session, status))}
+        </div>
+      )}
+    </section>
+  );
+
+  const sheetsByBatch = {};
+  sheets.forEach((s, i) => {
+    if (!sheetsByBatch[s.batch]) sheetsByBatch[s.batch] = [];
+    sheetsByBatch[s.batch].push({ ...s, index: i });
+  });
+
   return (
-    <div className="max-w-md mx-auto space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Start Attendance Session</h1>
-        <p className="text-gray-500">Create a session for students to check in</p>
+        <h1 className="text-2xl font-bold text-gray-900">Attendance Sessions</h1>
+        <p className="text-gray-500">Start a new session or return to an existing one</p>
       </div>
 
-      <div className="card">
-        <form onSubmit={handleStart} className="space-y-4">
-          <div>
-            <label className="label">Branch <span className="text-red-500">*</span></label>
-            <div className="flex gap-3">
-              {availableBranches.map((b) => (
-                <label
-                  key={b}
-                  className={`flex-1 flex items-center justify-center px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                    branch === b
-                      ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="branch"
-                    value={b}
-                    checked={branch === b}
-                    onChange={() => setBranch(b)}
-                    className="sr-only"
-                  />
-                  {b}
-                </label>
-              ))}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="card space-y-5 lg:col-span-1" aria-labelledby="start-session-heading">
+          <h2 id="start-session-heading" className="text-lg font-semibold text-gray-900">
+            Start New Session
+          </h2>
+
+          {loading === 'loading' ? (
+            <p className="text-sm text-gray-500">Loading workbook...</p>
+          ) : loading === 'error' ? (
+            <div className="space-y-3">
+              <p role="alert" className="text-sm text-red-700">{error}</p>
+              <button
+                type="button"
+                onClick={() => setRetryCount((count) => count + 1)}
+                className="btn-secondary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Retry workbook
+              </button>
             </div>
-          </div>
-
-          <div>
-            <label className="label">Batch <span className="text-red-500">*</span></label>
-            <div className="flex gap-2 flex-wrap">
-              {['September', 'December', 'March', 'June'].map((b) => (
-                <label
-                  key={b}
-                  className={`flex-1 min-w-[80px] flex items-center justify-center px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                    batch === b
-                      ? 'bg-primary-50 border-primary-300 text-primary-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="batch"
-                    value={b}
-                    checked={batch === b}
-                    onChange={() => setBatch(b)}
-                    className="sr-only"
-                  />
-                  <span className="text-sm">{b}</span>
-                </label>
-              ))}
+          ) : !workbook || !hasSheets ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">
+                No class sheets available. Add a sheet in Marks Management first.
+              </p>
+              <a
+                href="/marks"
+                className="btn-primary inline-flex text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Go to Marks Management
+              </a>
             </div>
-          </div>
+          ) : (
+            <form onSubmit={handleCreateSession} className="space-y-5">
+              <fieldset disabled={creating}>
+                <legend className="label">Select Sheet</legend>
+                <div className="space-y-3">
+                  {Object.keys(sheetsByBatch).map((batch) => (
+                    <div key={batch} className="space-y-2">
+                      <span className="text-xs font-semibold text-gray-500 block mb-1">{batch}</span>
+                      {sheetsByBatch[batch].map((sheet) => (
+                        <label
+                          key={sheet.index}
+                          className={`flex cursor-pointer items-center justify-between rounded-lg border px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 ${
+                            selectedSheetIndex === sheet.index
+                              ? 'border-primary-300 bg-primary-50 text-primary-700'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="sheet"
+                            value={sheet.index}
+                            checked={selectedSheetIndex === sheet.index}
+                            onChange={() => handleSelectSheet(sheet.index)}
+                            className="sr-only focus-visible:outline-none"
+                          />
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {sheet.year && (
+                                <span className="inline-block bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded">
+                                  {sheet.year}
+                                </span>
+                              )}
+                              {sheet.branch && (
+                                <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded">
+                                  {sheet.branch}
+                                </span>
+                              )}
+                              <span className="text-sm font-medium text-gray-900 truncate">{sheet.subject}</span>
+                              <span className="text-xs text-gray-400">({sheet.students?.length ?? 0})</span>
+                            </div>
+                          </div>
+                          {selectedSheetIndex === sheet.index && (
+                            <FiCheckCircle className="w-5 h-5 text-primary-600 shrink-0 ml-3" />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
 
-          <div>
-            <label className="label">Subject <span className="text-gray-400 font-normal">(optional)</span></label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="input-field"
-              placeholder="e.g., Mathematics, Physics"
-            />
-          </div>
+              <button
+                type="submit"
+                disabled={!canStart}
+                className="btn-primary flex w-full items-center justify-center gap-2"
+              >
+                <FiPlay className="h-4 w-4" />
+                {creating ? 'Creating...' : 'Start Attendance'}
+              </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-          >
-            <FiPlay className="w-4 h-4" />
-            {loading ? 'Starting...' : 'Start Session'}
-          </button>
-        </form>
+              {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+            </form>
+          )}
+        </section>
+
+        <section className="card space-y-6 lg:col-span-2" aria-labelledby="sessions-heading">
+          <h2 id="sessions-heading" className="text-lg font-semibold text-gray-900">
+            Your Sessions
+          </h2>
+
+          {sessionsLoading ? (
+            <p className="text-sm text-gray-500">Loading sessions...</p>
+          ) : sessionsError ? (
+            <div className="space-y-3">
+              <p role="alert" className="text-sm text-red-700">{sessionsError}</p>
+              <button
+                type="button"
+                onClick={() => setRetrySessionsCount((count) => count + 1)}
+                className="btn-secondary text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Retry sessions
+              </button>
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+              No attendance sessions yet. Start one from a class sheet.
+            </p>
+          ) : (
+            <div className="space-y-8">
+              {renderSessionGroup('Active Sessions', activeSessions, 'active', <FiClock className="w-5 h-5 text-green-600" />)}
+              {renderSessionGroup('Closed Sessions', closedSessions, 'closed', <FiCheckCircle className="w-5 h-5 text-gray-500" />)}
+              {renderSessionGroup('Cancelled Sessions', cancelledSessions, 'cancelled', <FiAlertCircle className="w-5 h-5 text-red-600" />)}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

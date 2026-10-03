@@ -10,13 +10,13 @@ const subjectRoutes = require('./routes/subjectRoutes');
 const classLogRoutes = require('./routes/classLogRoutes');
 const attendanceApprovalRoutes = require('./routes/attendanceApprovalRoutes');
 const attendanceSessionRoutes = require('./routes/attendanceSessionRoutes');
-const qrRoutes = require('./routes/qrRoutes');
-const marksSheetRoutes = require('./routes/marksSheetRoutes');
 const workbookRoutes = require('./routes/workbookRoutes');
-const seedRoutes = require('./routes/seedRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
+
+// Sit behind a single reverse proxy so req.ip reflects the real client
+app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet());
@@ -53,13 +53,8 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/class-logs', classLogRoutes);
 app.use('/api/attendance', attendanceApprovalRoutes);
 app.use('/api/attendance-sessions', attendanceSessionRoutes);
-app.use('/api/qr', qrRoutes);
-app.use('/api/marks-sheets', marksSheetRoutes);
 app.use('/api/workbook', workbookRoutes);
 app.use('/api/admin', adminRoutes);
-
-// Admin seed endpoint (no auth — protected by secret key)
-app.use('/api/seed', seedRoutes);
 
 // Error handling
 app.use(notFound);
