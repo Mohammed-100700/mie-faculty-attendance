@@ -2,7 +2,7 @@
 
 Updated: 2026-10-03
 Branch: `feature/student-attendance-v2`
-Latest completed work: C20H administrator user and assignment integrity (`85a8534`)
+Latest completed work: C20I responsive administrator user management (`4c99bf3`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -38,6 +38,7 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - A class-log rejection reason must be a string of 3 to 300 characters after trimming. An invalid reason is a controlled 400 that writes nothing.
 - Administrator user writes validate typed identity fields, passwords, roles, and complete role-specific assignments before mutating a user. Unknown assignments and newly acquired inactive assignments are rejected, while an existing inactive assignment may remain with its current owner.
 - Administrator partial user updates re-resolve retained branch, subject, and managed-branch records, so a deleted assignment cannot be silently preserved. Executive Office scope is always cleared, duplicate-email races remain controlled, and user responses omit credential material.
+- Administrator user management renders cards below the `lg` breakpoint and a semantic six-column table at desktop widths. Both views share filtering and mutation state, and the page has no horizontal overflow at 390px, 768px, or 1440px.
 
 ## Completed checkpoints
 
@@ -61,7 +62,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C20F: workbook mutation integrity — `3b2258d`
 - C20G: class log approval integrity and branch privacy — `c5322b3`
 - C20H: administrator user and assignment integrity — `85a8534`
+- C20I: responsive administrator user management — `4c99bf3`
 
 ## Current task
 
-C20I: Responsive Administrator User Management. See `docs/agent/NEXT.md`.
+C20J: Authenticated Self-Service Password Change. See `docs/agent/NEXT.md`.
