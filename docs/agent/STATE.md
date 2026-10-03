@@ -1,8 +1,8 @@
 # Project State
 
-Updated: 2026-09-27
+Updated: 2026-10-03
 Branch: `feature/student-attendance-v2`
-Latest completed work: C20G class log approval integrity and branch privacy (`c5322b3`)
+Latest completed work: C20H administrator user and assignment integrity (`85a8534`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -36,6 +36,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Academic Manager class-log approval is branch-scoped. All four approval endpoints require a non-empty `managedBranch`. Responses contain only the manager's own entry, with `totalClasses` and `approvalStatus` recomputed for that entry, and the stored `ClassLog` is never shaped in place. Another branch's entries, approvers, timestamps, and rejection reasons are never returned.
 - Class-log decisions are single-document atomic updates guarded by a `Pending` entry for the manager's branch, and they recalculate the stored top-level `approvalStatus` in the same operation. Only a `Pending` entry can be decided, and a re-review is a controlled 409. A stale document never rewrites `entries`, so decisions on different branches are both preserved.
 - A class-log rejection reason must be a string of 3 to 300 characters after trimming. An invalid reason is a controlled 400 that writes nothing.
+- Administrator user writes validate typed identity fields, passwords, roles, and complete role-specific assignments before mutating a user. Unknown assignments and newly acquired inactive assignments are rejected, while an existing inactive assignment may remain with its current owner.
+- Administrator partial user updates re-resolve retained branch, subject, and managed-branch records, so a deleted assignment cannot be silently preserved. Executive Office scope is always cleared, duplicate-email races remain controlled, and user responses omit credential material.
 
 ## Completed checkpoints
 
@@ -58,7 +60,8 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C20E: lecturer assignment enforcement — `6b36c37`
 - C20F: workbook mutation integrity — `3b2258d`
 - C20G: class log approval integrity and branch privacy — `c5322b3`
+- C20H: administrator user and assignment integrity — `85a8534`
 
 ## Current task
 
-C20H: Administrator User and Assignment Integrity. See `docs/agent/NEXT.md`.
+C20I: Responsive Administrator User Management. See `docs/agent/NEXT.md`.
