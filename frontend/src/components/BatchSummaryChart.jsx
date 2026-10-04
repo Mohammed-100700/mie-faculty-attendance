@@ -8,13 +8,14 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
+import { orderedBatchKeys } from '../constants/batches';
 
 const BatchSummaryChart = ({ batchBreakdown }) => {
-  const data = Object.entries(batchBreakdown).map(([batch, d]) => ({
+  const data = orderedBatchKeys(batchBreakdown).map((batch) => ({
     batch,
-    Present: d.present,
-    Absent: d.absent,
-    Cancelled: d.cancelled,
+    Present: batchBreakdown[batch].present,
+    Absent: batchBreakdown[batch].absent,
+    Cancelled: batchBreakdown[batch].cancelled,
   }));
 
   if (data.length === 0) {

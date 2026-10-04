@@ -5,6 +5,7 @@ import {
 import { getAllWorkbooks } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
 import { exportIndividualPdf, exportClassPdf } from '../utils/exportMarksPdf';
+import { orderedBatchKeys } from '../constants/batches';
 
 const formatDate = (date) => {
   if (!date) return '';
@@ -171,7 +172,7 @@ const ExecutiveMarks = () => {
                   <div className="border-t border-gray-100 bg-gray-50/50 p-4 space-y-4">
                     {/* Sheet Tabs grouped by Batch */}
                     <div className="space-y-2">
-                      {Object.keys(sheetsByBatch).map((batch) => (
+                      {orderedBatchKeys(sheetsByBatch).map((batch) => (
                         <div key={batch} className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-semibold text-gray-500 w-20 flex-shrink-0">{batch}</span>
                           {sheetsByBatch[batch].map((s) => (

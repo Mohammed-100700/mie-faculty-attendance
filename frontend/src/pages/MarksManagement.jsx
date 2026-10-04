@@ -10,8 +10,8 @@ import {
 } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
 import { getBranches } from '../api/branchApi';
+import { BATCHES, orderedBatchKeys } from '../constants/batches';
 
-const BATCHES = ['March', 'July', 'September', 'December'];
 const YEARS = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - 2 + i));
 
 const MarksManagement = () => {
@@ -330,7 +330,7 @@ const MarksManagement = () => {
 
       {/* Sheet Tabs grouped by Batch */}
       <div className="space-y-2">
-        {Object.keys(sheetsByBatch).map((batch) => (
+        {orderedBatchKeys(sheetsByBatch).map((batch) => (
           <div key={batch} className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-500 w-20 flex-shrink-0">{batch}</span>
             {sheetsByBatch[batch].map((s) => (

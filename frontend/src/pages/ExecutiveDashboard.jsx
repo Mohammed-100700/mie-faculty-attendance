@@ -15,8 +15,8 @@ import { getBranches } from '../api/branchApi';
 import { useAuth } from '../context/AuthContext';
 import ExportButtons from '../components/ExportButtons';
 import { exportClassAttendancePdf, exportStudentAttendancePdf } from '../utils/exportAttendancePdf';
+import { BATCHES } from '../constants/batches';
 
-const BATCHES = ['September', 'December', 'March', 'June'];
 const EMPTY_FILTERS = { year: '', batch: '', branch: '', subject: '' };
 
 const errorMessage = (error, fallback) =>

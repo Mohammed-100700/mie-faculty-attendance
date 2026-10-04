@@ -1,8 +1,8 @@
 # Project State
 
-Updated: 2026-10-03
+Updated: 2026-10-04
 Branch: `feature/student-attendance-v2`
-Latest completed work: C20I responsive administrator user management (`4c99bf3`)
+Latest completed work: C20J authenticated self-service password change (`0e6584c`)
 
 Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree state. Do not treat this file as proof that the tree is clean.
 
@@ -15,6 +15,7 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - Public student self-check-in remains blocked for snapshot-backed sessions and preserved for legacy sessions.
 - Manual attendance saves the complete set of present student refs. An empty set is valid.
 - Starting attendance uses a lecturer-owned workbook sheet and preserves its original `sheetIndex`, including index `0`.
+- Academic batches use the canonical order September, December, March, July. New workbook sheets and attendance sessions reject other batch values; unknown historical labels remain readable after canonical groups.
 - New attendance sessions snapshot the selected sheet's normalized academic year. Existing sessions without a year remain readable as `Unspecified`.
 - Workbook NCUK ID updates synchronize to the canonical linked Student inside a transaction. Legacy rows without `studentRef` remain workbook-only.
 - Every workbook mutation parses its sheet, test, student, and column indexes through one canonical non-negative integer parser and validates the target record before mutating. Malformed indexes are controlled 400s and never delete or change another record.
@@ -63,7 +64,9 @@ Run `node scripts/harness/context.mjs` for live branch, HEAD, and working-tree s
 - C20G: class log approval integrity and branch privacy — `c5322b3`
 - C20H: administrator user and assignment integrity — `85a8534`
 - C20I: responsive administrator user management — `4c99bf3`
+- C20J: authenticated self-service password change — `0e6584c`
+- C20K: canonical batch options — `f485a7d`
 
 ## Current task
 
-C20J: Authenticated Self-Service Password Change. See `docs/agent/NEXT.md`.
+No checkpoint is currently active. Define the next checkpoint in `docs/agent/NEXT.md`.

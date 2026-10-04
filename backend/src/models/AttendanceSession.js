@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { BATCHES } = require('../constants/batches');
 
 const rosterSnapshotStudentSchema = new mongoose.Schema(
   {
@@ -38,7 +39,7 @@ const attendanceSessionSchema = new mongoose.Schema(
     },
     batch: {
       type: String,
-      enum: ['September', 'December', 'March', 'June'],
+      enum: BATCHES,
       default: 'September',
     },
     subject: {

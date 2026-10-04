@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Workbook = require('../models/Workbook');
 const Student = require('../models/Student');
 const { assertAssignedBranch, assertAssignedSubject } = require('../utils/lecturerAssignmentScope');
+const { BATCHES } = require('../constants/batches');
 
 // Sanitize helper — strip HTML tags and limit length
 function sanitize(str, maxLen = 200) {
@@ -149,6 +150,13 @@ const addSheet = async (req, res, next) => {
 
     if (!cleanBatch || !cleanBranch || !cleanSubject) {
       return res.status(400).json({ success: false, message: 'Invalid batch, branch, or subject.' });
+    }
+
+    if (!BATCHES.includes(cleanBatch)) {
+      return res.status(400).json({
+        success: false,
+        message: `Batch must be one of: ${BATCHES.join(', ')}.`,
+      });
     }
 
     // Year is optional and must normalize to a 4-digit value; an absent year
