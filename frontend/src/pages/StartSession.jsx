@@ -4,6 +4,7 @@ import { FiPlay, FiClock, FiCheckCircle, FiUsers, FiAlertCircle } from 'react-ic
 import { createSessionFromSheet, getMySessions } from '../api/attendanceSessionApi';
 import { getWorkbook } from '../api/workbookApi';
 import { useAuth } from '../context/AuthContext';
+import { orderedBatchKeys } from '../constants/batches';
 
 const StartSession = () => {
   const navigate = useNavigate();
@@ -276,7 +277,7 @@ const StartSession = () => {
               <fieldset disabled={creating}>
                 <legend className="label">Select Sheet</legend>
                 <div className="space-y-3">
-                  {Object.keys(sheetsByBatch).map((batch) => (
+                  {orderedBatchKeys(sheetsByBatch).map((batch) => (
                     <div key={batch} className="space-y-2">
                       <span className="text-xs font-semibold text-gray-500 block mb-1">{batch}</span>
                       {sheetsByBatch[batch].map((sheet) => (
